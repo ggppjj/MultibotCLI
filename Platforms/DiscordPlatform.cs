@@ -1,7 +1,9 @@
-﻿using Discord;
+﻿using System.Diagnostics.CodeAnalysis;
+using Discord;
 using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using MultiBot.Bots;
 using MultiBot.Interfaces;
 using Newtonsoft.Json;
 using Serilog;
@@ -94,12 +96,78 @@ internal class DiscordPlatform : IBotPlatform
     {
         try
         {
-            var matchingCommand = Commands.FirstOrDefault(c => c.Name == command.CommandName);
-            var response = matchingCommand?.Response(BotPlatforms.Discord);
-            if (matchingCommand is not null && response is not null and Embed embed)
-                await command.RespondAsync(embed: embed);
-            else
+            var matchingCommand = Commands.FirstOrDefault(c =>
+                c.Name.Equals(command.CommandName, StringComparison.InvariantCultureIgnoreCase)
+            );
+
+            if (matchingCommand is null)
+            {
                 await command.RespondAsync("Unknown botCommand.", ephemeral: true);
+                return;
+            }
+
+            var response = matchingCommand.Response(BotPlatforms.Discord);
+
+            if (response is null)
+            {
+                await command.RespondAsync("No response from command.", ephemeral: true);
+                return;
+            }
+
+            // Handle string responses
+            if (response is string textResponse)
+            {
+                if (string.IsNullOrEmpty(textResponse))
+                    await command.RespondAsync("Empty response.", ephemeral: true);
+                else
+                    await command.RespondAsync(textResponse);
+                return;
+            }
+
+            // Handle direct Embed responses (for backward compatibility)
+            if (response is Embed embed)
+            {
+                await command.RespondAsync(embed: embed);
+                return;
+            }
+
+            // Handle complex responses using reflection
+            var responseType = response.GetType();
+            var embedProperty = responseType.GetProperty("Embed");
+            var attachmentProperty = responseType.GetProperty("Attachment");
+            var textProperty = responseType.GetProperty("Text");
+
+            var responseEmbed = embedProperty?.GetValue(response) as Embed;
+            var attachment = attachmentProperty?.GetValue(response) as FileAttachment?;
+            var text = textProperty?.GetValue(response) as string;
+
+            // Send response with attachment and embed
+            if (attachment is not null && responseEmbed != null)
+            {
+                await command.RespondWithFileAsync(
+                    attachment: attachment.Value,
+                    embed: responseEmbed
+                );
+            }
+            // Send response with attachment and text
+            else if (attachment != null)
+            {
+                await command.RespondWithFileAsync(attachment: attachment.Value, text: text ?? "");
+            }
+            // Send response with just embed
+            else if (responseEmbed != null)
+            {
+                await command.RespondAsync(embed: responseEmbed);
+            }
+            // Send response with just text
+            else if (!string.IsNullOrEmpty(text))
+            {
+                await command.RespondAsync(text);
+            }
+            else
+            {
+                await command.RespondAsync("Unsupported response type.", ephemeral: true);
+            }
         }
         catch (Exception ex)
         {
@@ -118,7 +186,7 @@ internal class DiscordPlatform : IBotPlatform
         {
             applicationCommandProperties.Add(
                 new SlashCommandBuilder()
-                    .WithName(command.Name)
+                    .WithName(command.Name.ToLowerInvariant())
                     .WithDescription(command.Description)
                     .Build()
             );
@@ -146,7 +214,7 @@ internal class DiscordPlatform : IBotPlatform
 
     private static Task LogDiscordMessageToSerilog(LogMessage message)
     {
-        var logger = Log.Logger;
+        var logger = LogController.SetupLogging(typeof(DiscordPlatform));
         var logEventLevel = message.Severity switch
         {
             LogSeverity.Critical => Serilog.Events.LogEventLevel.Fatal,
@@ -159,9 +227,9 @@ internal class DiscordPlatform : IBotPlatform
         };
 
         if (message.Exception != null)
-            logger.Write(logEventLevel, message.Exception, $"DDN: {message.Message}");
+            logger.Write(logEventLevel, message.Exception, message.Message);
         else
-            logger.Write(logEventLevel, $"DDN: {message.Message}");
+            logger.Write(logEventLevel, message.Message);
 
         return Task.CompletedTask;
     }
