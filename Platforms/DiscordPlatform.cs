@@ -114,7 +114,6 @@ internal class DiscordPlatform : IBotPlatform
                 return;
             }
 
-            // Handle string responses
             if (response is string textResponse)
             {
                 if (string.IsNullOrEmpty(textResponse))
@@ -124,15 +123,15 @@ internal class DiscordPlatform : IBotPlatform
                 return;
             }
 
-            // Handle direct Embed responses (for backward compatibility)
             if (response is Embed embed)
             {
                 await command.RespondAsync(embed: embed);
                 return;
             }
 
-            // Handle complex responses using reflection
-            var responseType = response.GetType();
+            // No attribute, just use GetType as normal
+            Type responseType = response.GetType();
+
             var embedProperty = responseType.GetProperty("Embed");
             var attachmentProperty = responseType.GetProperty("Attachment");
             var textProperty = responseType.GetProperty("Text");
