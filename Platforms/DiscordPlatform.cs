@@ -63,7 +63,7 @@ internal class DiscordPlatform : IBotPlatform
         _token = _tokenConfig[Bot.Name];
         if (string.IsNullOrWhiteSpace(_token) || _token == "YOUR_DISCORD_BOT_TOKEN_HERE")
         {
-            _logger.Fatal("Missing bot token in DiscordTokens.json file");
+            _logger.Fatal("Missing bot token in DiscordTokens.json file!");
             throw new InvalidDataException("Missing bot token!");
         }
 
@@ -93,7 +93,7 @@ internal class DiscordPlatform : IBotPlatform
     {
         if (string.IsNullOrWhiteSpace(_token))
         {
-            _logger.Fatal("Missing bot token in DiscordTokens.json file");
+            _logger.Fatal("Missing bot token in DiscordTokens.json file!");
             throw new InvalidDataException("Missing bot token!");
         }
         await _client.StartAsync();
@@ -183,7 +183,7 @@ internal class DiscordPlatform : IBotPlatform
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, $"Error processing slash command '{slashCommand.Data.Name}'");
+            _logger.Error(ex, $"Error processing slash command '{slashCommand.Data.Name}'.");
             try
             {
                 try
@@ -212,13 +212,13 @@ internal class DiscordPlatform : IBotPlatform
                     }
                     catch (Exception followupEx)
                     {
-                        _logger.Error(followupEx, "Failed to send error response");
+                        _logger.Error(followupEx, "Failed to send error response.");
                     }
                 }
             }
             catch (Exception followupEx)
             {
-                _logger.Error(followupEx, "Failed to send error response");
+                _logger.Error(followupEx, "Failed to send error response.");
             }
         }
     }
@@ -280,14 +280,14 @@ internal class DiscordPlatform : IBotPlatform
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, $"Error processing text command from message: {message.Content}");
+            _logger.Error(ex, $"Error processing text command from message: {message.Content}.");
             try
             {
                 await message.ReplyAsync("An error occurred while processing your command.");
             }
             catch (Exception replyEx)
             {
-                _logger.Error(replyEx, "Failed to send error response");
+                _logger.Error(replyEx, "Failed to send error response.");
             }
         }
     }
@@ -317,18 +317,18 @@ internal class DiscordPlatform : IBotPlatform
                     args.User.Id,
                     desiredCommands
                 );
-                _logger.Information("Commands registered successfully");
+                _logger.Information("Commands registered successfully.");
             }
             else
             {
-                _logger.Information("Commands are up to date, skipping registration");
+                _logger.Information("Commands are up to date, skipping registration.");
             }
 
-            _logger.Information("Ready");
+            _logger.Information("Ready!");
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error during ready event");
+            _logger.Error(ex, "Error during ready event.");
         }
     }
 
