@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Text.Json.Serialization;
+using Microsoft.Extensions.Configuration;
 using MultiBot.Bots;
 using MultiBot.Helper_Classes;
 using MultiBot.Interfaces;
@@ -11,9 +12,24 @@ List<IBot> bots = [];
 CancellationTokenSource? shutdownCts = new();
 var shutdownCompleted = false;
 
+ConfigHelper.EnsureConfigDirectoriesExist();
+if (!File.Exists(ConfigHelper.ProgramConfigPath))
+{
+    var defaultConfig = new ProgramConfig { LogLevel = "Information" };
+    var json = System.Text.Json.JsonSerializer.Serialize(
+        defaultConfig,
+        ProgramConfigJsonContext.Default.ProgramConfig
+    );
+    File.WriteAllText(ConfigHelper.ProgramConfigPath, json);
+}
+
 var localApplicationConfig = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("config.json", optional: true, reloadOnChange: true)
+    .SetBasePath(Path.GetDirectoryName(ConfigHelper.ProgramConfigPath)!)
+    .AddJsonFile(
+        Path.GetFileName(ConfigHelper.ProgramConfigPath),
+        optional: true,
+        reloadOnChange: true
+    )
     .Build();
 
 var logController = new LogController();
@@ -65,3 +81,12 @@ async Task Shutdown()
         Log.CloseAndFlush();
     }
 }
+
+public class ProgramConfig
+{
+    public string LogLevel { get; set; } = "Information";
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(ProgramConfig))]
+internal partial class ProgramConfigJsonContext : JsonSerializerContext { }

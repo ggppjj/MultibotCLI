@@ -69,12 +69,19 @@ internal class DiscordPlatform : IBotPlatform
 
         _client = new GatewayClient(
             new BotToken(_token),
-            new GatewayClientConfiguration { Intents = GatewayIntents.Guilds }
+            new GatewayClientConfiguration
+            {
+                Intents =
+                    GatewayIntents.Guilds
+                    | GatewayIntents.GuildMessages
+                    | GatewayIntents.MessageContent,
+            }
         );
 
         _commandService = new ApplicationCommandService<SlashCommandContext>();
 
         _client.InteractionCreate += async interaction => await HandleInteractionAsync(interaction);
+        _client.MessageCreate += async message => await HandleMessageAsync(message);
         _client.Ready += async args => await OnClientReady(args);
 
         LoadCommands();
@@ -107,7 +114,7 @@ internal class DiscordPlatform : IBotPlatform
         try
         {
             var matchingCommand = Commands
-                .Where(c => c.CommandType == BotCommandTypes.SlashCommand)
+                .Where(c => c.CommandType.HasFlag(BotCommandTypes.SlashCommand))
                 .FirstOrDefault(c =>
                     c.Name.Equals(
                         slashCommand.Data.Name,
@@ -212,6 +219,75 @@ internal class DiscordPlatform : IBotPlatform
             catch (Exception followupEx)
             {
                 _logger.Error(followupEx, "Failed to send error response");
+            }
+        }
+    }
+
+    private async Task HandleMessageAsync(Message message)
+    {
+        if (message.Author.IsBot || !message.Content.StartsWith('!'))
+            return;
+
+        try
+        {
+            var commandText = message.Content[1..].Split(' ')[0].ToLowerInvariant();
+
+            var matchingCommand = Commands
+                .Where(c => c.CommandType.HasFlag(BotCommandTypes.TextCommand))
+                .FirstOrDefault(c =>
+                    c.Name.Equals(commandText, StringComparison.InvariantCultureIgnoreCase)
+                );
+
+            if (matchingCommand is null)
+                return;
+
+            var response = await matchingCommand.Response.PrepareResponse();
+
+            if (!response)
+            {
+                await message.ReplyAsync("No response from command.");
+                return;
+            }
+
+            var embed = new EmbedProperties()
+                .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
+                .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
+
+            if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
+            {
+                embed.Image = new EmbedImageProperties(
+                    $"attachment://{matchingCommand.Response.EmbedFileName}"
+                );
+            }
+
+            var messageProps = new ReplyMessageProperties();
+            messageProps.AddEmbeds(embed);
+
+            if (
+                !string.IsNullOrEmpty(matchingCommand.Response.EmbedFilePath)
+                && !string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName)
+            )
+            {
+                var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
+                var attachment = new AttachmentProperties(
+                    matchingCommand.Response.EmbedFileName,
+                    fileStream
+                );
+                messageProps.AddAttachments(attachment);
+            }
+
+            await message.ReplyAsync(messageProps);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, $"Error processing text command from message: {message.Content}");
+            try
+            {
+                await message.ReplyAsync("An error occurred while processing your command.");
+            }
+            catch (Exception replyEx)
+            {
+                _logger.Error(replyEx, "Failed to send error response");
             }
         }
     }

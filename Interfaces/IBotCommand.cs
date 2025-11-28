@@ -2,9 +2,12 @@
 
 namespace MultiBot.Interfaces;
 
+[Flags]
 public enum BotCommandTypes
 {
-    SlashCommand,
+    None = 0,
+    SlashCommand = 1,
+    TextCommand = 2,
 }
 
 public interface IBotCommand
