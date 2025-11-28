@@ -1,9 +1,18 @@
-﻿namespace MultiBot.Interfaces;
+﻿using MultiBot.Platforms;
 
-internal interface IBotCommand
+namespace MultiBot.Interfaces;
+
+public enum BotCommandTypes
+{
+    SlashCommand,
+}
+
+public interface IBotCommand
 {
     string Name { get; }
     string Description { get; }
-    Func<BotPlatforms, object> Response { get; }
+    BotCommandTypes CommandType { get; }
+    IBotResponse Response { get; }
     List<BotPlatforms> CommandPlatforms { get; }
+    IBot OriginatingBot { get; }
 }

@@ -1,10 +1,5 @@
 ﻿namespace MultiBot.Interfaces;
 
-enum BotPlatforms
-{
-    Discord,
-}
-
 internal interface IBotPlatform
 {
     string Name { get; }

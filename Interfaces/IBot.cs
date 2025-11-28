@@ -1,6 +1,6 @@
 ﻿namespace MultiBot.Interfaces;
 
-internal interface IBot
+public interface IBot
 {
     string Name { get; }
     List<IBotCommand> Commands { get; }

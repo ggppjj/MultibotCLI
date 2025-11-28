@@ -1,13 +1,18 @@
-﻿using Discord;
-using Discord.Net;
-using Discord.WebSocket;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using MultiBot.Helper_Classes;
 using MultiBot.Interfaces;
-using Newtonsoft.Json;
+using NetCord;
+using NetCord.Gateway;
+using NetCord.Rest;
+using NetCord.Services.ApplicationCommands;
 using Serilog;
 
 namespace MultiBot.Platforms;
+
+[JsonSerializable(typeof(Dictionary<string, string>))]
+internal partial class TokenJsonContext : JsonSerializerContext { }
 
 public delegate void CommandEventHandler(object? sender, EventArgs? e);
 
@@ -22,12 +27,9 @@ internal class DiscordPlatform : IBotPlatform
         "DiscordTokens.json"
     );
     private readonly IConfiguration _tokenConfig;
-    private readonly DiscordSocketClient _discordClient;
+    private readonly GatewayClient _client;
+    private readonly ApplicationCommandService<SlashCommandContext> _commandService;
     private readonly ILogger _logger;
-    private readonly DiscordSocketConfig _discordClientConfig = new()
-    {
-        LogLevel = LogSeverity.Info,
-    };
     private readonly string? _token;
 
     public event CommandEventHandler? OnCommand;
@@ -46,7 +48,7 @@ internal class DiscordPlatform : IBotPlatform
             };
             File.WriteAllText(
                 _tokenFilePath,
-                JsonConvert.SerializeObject(template, Formatting.Indented)
+                JsonSerializer.Serialize(template, TokenJsonContext.Default.DictionaryStringString)
             );
             _logger.Warning(
                 $"Created {_tokenFilePath} with a placeholder token. Please update it."
@@ -64,10 +66,17 @@ internal class DiscordPlatform : IBotPlatform
             _logger.Fatal("Missing bot token in DiscordTokens.json file");
             throw new InvalidDataException("Missing bot token!");
         }
-        _discordClient = new(_discordClientConfig);
-        _discordClient.Log += LogDiscordMessageToSerilog;
-        _discordClient.SlashCommandExecuted += SlashCommandHandler;
-        _discordClient.Ready += OnClientReady;
+
+        _client = new GatewayClient(
+            new BotToken(_token),
+            new GatewayClientConfiguration { Intents = GatewayIntents.Guilds }
+        );
+
+        _commandService = new ApplicationCommandService<SlashCommandContext>();
+
+        _client.InteractionCreate += async interaction => await HandleInteractionAsync(interaction);
+        _client.Ready += async args => await OnClientReady(args);
+
         LoadCommands();
         StartAsync().GetAwaiter().GetResult();
         _logger.Information($"Started for {Bot.Name}.");
@@ -80,126 +89,197 @@ internal class DiscordPlatform : IBotPlatform
             _logger.Fatal("Missing bot token in DiscordTokens.json file");
             throw new InvalidDataException("Missing bot token!");
         }
-        await _discordClient.LoginAsync(TokenType.Bot, _token);
-        await _discordClient.StartAsync();
+        await _client.StartAsync();
     }
 
     public async Task Shutdown()
     {
         _logger.Information($"Shutting down for {Bot.Name}...");
-        await _discordClient.LogoutAsync();
+        await _client.CloseAsync();
         _logger.Information($"Shutdown for {Bot.Name} complete.");
     }
 
-    internal async Task SlashCommandHandler(SocketSlashCommand command)
+    private async Task HandleInteractionAsync(Interaction interaction)
     {
+        if (interaction is not SlashCommandInteraction slashCommand)
+            return;
+
         try
         {
-            var matchingCommand = Commands.FirstOrDefault(c =>
-                c.Name.Equals(command.CommandName, StringComparison.InvariantCultureIgnoreCase)
-            );
+            var matchingCommand = Commands
+                .Where(c => c.CommandType == BotCommandTypes.SlashCommand)
+                .FirstOrDefault(c =>
+                    c.Name.Equals(
+                        slashCommand.Data.Name,
+                        StringComparison.InvariantCultureIgnoreCase
+                    )
+                );
 
             if (matchingCommand is null)
             {
-                await command.RespondAsync("Unknown botCommand.", ephemeral: true);
+                await interaction.SendResponseAsync(
+                    InteractionCallback.Message(
+                        new InteractionMessageProperties
+                        {
+                            Content = "Unknown command.",
+                            Flags = MessageFlags.Ephemeral,
+                        }
+                    )
+                );
                 return;
             }
 
-            var response = matchingCommand.Response(BotPlatforms.Discord);
+            await interaction.SendResponseAsync(InteractionCallback.DeferredMessage());
 
-            if (response is null)
+            var response = await matchingCommand.Response.PrepareResponse();
+
+            if (!response)
             {
-                await command.RespondAsync("No response from command.", ephemeral: true);
+                await interaction.SendFollowupMessageAsync(
+                    new InteractionMessageProperties
+                    {
+                        Content = "No response from command.",
+                        Flags = MessageFlags.Ephemeral,
+                    }
+                );
                 return;
             }
 
-            // Handle string responses
-            if (response is string textResponse)
+            var embed = new EmbedProperties()
+                .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
+                .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
+
+            if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
             {
-                if (string.IsNullOrEmpty(textResponse))
-                    await command.RespondAsync("Empty response.", ephemeral: true);
-                else
-                    await command.RespondAsync(textResponse);
-                return;
-            }
-
-            // Handle direct Embed responses (for backward compatibility)
-            if (response is Embed embed)
-            {
-                await command.RespondAsync(embed: embed);
-                return;
-            }
-
-            // Handle complex responses using reflection
-            var responseType = response.GetType();
-            var embedProperty = responseType.GetProperty("Embed");
-            var attachmentProperty = responseType.GetProperty("Attachment");
-            var textProperty = responseType.GetProperty("Text");
-
-            var responseEmbed = embedProperty?.GetValue(response) as Embed;
-            var attachment = attachmentProperty?.GetValue(response) as FileAttachment?;
-            var text = textProperty?.GetValue(response) as string;
-
-            // Send response with attachment and embed
-            if (attachment is not null && responseEmbed != null)
-            {
-                await command.RespondWithFileAsync(
-                    attachment: attachment.Value,
-                    embed: responseEmbed
+                embed.Image = new EmbedImageProperties(
+                    $"attachment://{matchingCommand.Response.EmbedFileName}"
                 );
             }
-            // Send response with attachment and text
-            else if (attachment != null)
+
+            var messageProps = new InteractionMessageProperties();
+            messageProps.AddEmbeds(embed);
+
+            if (
+                !string.IsNullOrEmpty(matchingCommand.Response.EmbedFilePath)
+                && !string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName)
+            )
             {
-                await command.RespondWithFileAsync(attachment: attachment.Value, text: text ?? "");
+                var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
+                var attachment = new AttachmentProperties(
+                    matchingCommand.Response.EmbedFileName,
+                    fileStream
+                );
+                messageProps.AddAttachments(attachment);
             }
-            // Send response with just embed
-            else if (responseEmbed != null)
-            {
-                await command.RespondAsync(embed: responseEmbed);
-            }
-            // Send response with just text
-            else if (!string.IsNullOrEmpty(text))
-            {
-                await command.RespondAsync(text);
-            }
-            else
-            {
-                await command.RespondAsync("Unsupported response type.", ephemeral: true);
-            }
+
+            await interaction.SendFollowupMessageAsync(messageProps);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, $"Error processing slash botCommand '{command.CommandName}'");
-            await command.RespondAsync(
-                "An error occurred while processing your botCommand.",
-                ephemeral: true
-            );
+            _logger.Error(ex, $"Error processing slash command '{slashCommand.Data.Name}'");
+            try
+            {
+                try
+                {
+                    await interaction.SendFollowupMessageAsync(
+                        new InteractionMessageProperties
+                        {
+                            Content = "An error occurred while processing your command.",
+                            Flags = MessageFlags.Ephemeral,
+                        }
+                    );
+                }
+                catch
+                {
+                    try
+                    {
+                        await interaction.SendResponseAsync(
+                            InteractionCallback.Message(
+                                new InteractionMessageProperties
+                                {
+                                    Content = "An error occurred while processing your command.",
+                                    Flags = MessageFlags.Ephemeral,
+                                }
+                            )
+                        );
+                    }
+                    catch (Exception followupEx)
+                    {
+                        _logger.Error(followupEx, "Failed to send error response");
+                    }
+                }
+            }
+            catch (Exception followupEx)
+            {
+                _logger.Error(followupEx, "Failed to send error response");
+            }
         }
     }
 
-    internal async Task OnClientReady()
+    private async Task OnClientReady(ReadyEventArgs args)
     {
-        List<ApplicationCommandProperties> applicationCommandProperties = [];
-        foreach (var command in Commands)
-        {
-            applicationCommandProperties.Add(
-                new SlashCommandBuilder()
-                    .WithName(command.Name.ToLowerInvariant())
-                    .WithDescription(command.Description)
-                    .Build()
-            );
-        }
         try
         {
-            _ = await _discordClient.BulkOverwriteGlobalApplicationCommandsAsync([
-                .. applicationCommandProperties,
-            ]);
+            var existingCommands = await _client.Rest.GetGlobalApplicationCommandsAsync(
+                args.User.Id
+            );
+
+            var desiredCommands = new List<ApplicationCommandProperties>();
+            foreach (var command in Commands)
+            {
+                desiredCommands.Add(
+                    new SlashCommandProperties(command.Name.ToLowerInvariant(), command.Description)
+                );
+            }
+
+            bool needsUpdate = CommandsHaveChanged(existingCommands, desiredCommands);
+
+            if (needsUpdate)
+            {
+                _logger.Information("Commands have changed, updating registration...");
+                await _client.Rest.BulkOverwriteGlobalApplicationCommandsAsync(
+                    args.User.Id,
+                    desiredCommands
+                );
+                _logger.Information("Commands registered successfully");
+            }
+            else
+            {
+                _logger.Information("Commands are up to date, skipping registration");
+            }
+
+            _logger.Information("Ready");
         }
-        catch (HttpException exception)
+        catch (Exception ex)
         {
-            Console.WriteLine(JsonConvert.SerializeObject(exception.Errors, Formatting.Indented));
+            _logger.Error(ex, "Error during ready event");
         }
+    }
+
+    private static bool CommandsHaveChanged(
+        IEnumerable<ApplicationCommand> existing,
+        List<ApplicationCommandProperties> desired
+    )
+    {
+        var existingList = existing.ToList();
+
+        if (existingList.Count != desired.Count)
+            return true;
+
+        foreach (var desiredCmd in desired)
+        {
+            if (desiredCmd is not SlashCommandProperties slashCmd)
+                continue;
+
+            var existingCmd = existingList.FirstOrDefault(e =>
+                e.Name.Equals(slashCmd.Name, StringComparison.OrdinalIgnoreCase)
+            );
+
+            if (existingCmd == null || existingCmd.Description != slashCmd.Description)
+                return true;
+        }
+
+        return false;
     }
 
     private void LoadCommands()
@@ -209,28 +289,6 @@ internal class DiscordPlatform : IBotPlatform
             if (botCommand.CommandPlatforms.Contains(BotPlatforms.Discord))
                 Commands.Add(botCommand);
         }
-    }
-
-    private static Task LogDiscordMessageToSerilog(LogMessage message)
-    {
-        var logger = LogController.SetupLogging(typeof(DiscordPlatform));
-        var logEventLevel = message.Severity switch
-        {
-            LogSeverity.Critical => Serilog.Events.LogEventLevel.Fatal,
-            LogSeverity.Error => Serilog.Events.LogEventLevel.Error,
-            LogSeverity.Warning => Serilog.Events.LogEventLevel.Warning,
-            LogSeverity.Info => Serilog.Events.LogEventLevel.Information,
-            LogSeverity.Verbose => Serilog.Events.LogEventLevel.Verbose,
-            LogSeverity.Debug => Serilog.Events.LogEventLevel.Debug,
-            _ => Serilog.Events.LogEventLevel.Information,
-        };
-
-        if (message.Exception != null)
-            logger.Write(logEventLevel, message.Exception, message.Message);
-        else
-            logger.Write(logEventLevel, message.Message);
-
-        return Task.CompletedTask;
     }
 
     protected virtual void RaiseCommandEvent(EventArgs e) => OnCommand?.Invoke(this, e);
