@@ -115,7 +115,6 @@ internal class GnomeoCommand : IBotCommand
             if (gnomeo.Count == 0)
                 return Task.FromResult(false);
 
-            var rng = new Random();
             var randomGnomeo = gnomeo[Random.Shared.Next(gnomeo.Count)];
 
             Message = randomGnomeo.Quote;
