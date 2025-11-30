@@ -14,7 +14,7 @@ public struct MovieData()
     public string ImageFileName { get; set; } = string.Empty;
 }
 
-public class CinephileConfig()
+public class CinephileConfig
 {
     public List<MovieData> Movies { get; set; } = [];
 }
@@ -34,7 +34,6 @@ internal class CinephileCommandConfig(string botName, string commandName, ILogge
     {
         return new CinephileConfig
         {
-            //Default data, mostly to generate a config to demonstrate the structure.
             Movies =
             [
                 new()
@@ -89,7 +88,6 @@ internal class CinephileCommand : IBotCommand
 
     internal class CinephileResponse(IBotCommand command) : IBotResponse
     {
-        //Default text is intentionally weird, should never be seen but would be funny if it were.
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public IBotCommand OriginatingCommand { get; } = command;
         public string Message { get; set; } = "Movie!";
@@ -109,8 +107,7 @@ internal class CinephileCommand : IBotCommand
             if (movies.Count == 0)
                 return Task.FromResult(false);
 
-            var rng = new Random();
-            var randomMovie = movies[rng.Next(movies.Count)];
+            var randomMovie = movies[Random.Shared.Next(movies.Count)];
 
             Message = randomMovie.Description;
             EmbedTitle = randomMovie.Title;

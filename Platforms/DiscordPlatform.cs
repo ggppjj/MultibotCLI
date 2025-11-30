@@ -171,7 +171,7 @@ internal class DiscordPlatform : IBotPlatform
                 && !string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName)
             )
             {
-                var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
+                using var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
                 var attachment = new AttachmentProperties(
                     matchingCommand.Response.EmbedFileName,
                     fileStream
@@ -268,7 +268,7 @@ internal class DiscordPlatform : IBotPlatform
                 && !string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName)
             )
             {
-                var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
+                using var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
                 var attachment = new AttachmentProperties(
                     matchingCommand.Response.EmbedFileName,
                     fileStream

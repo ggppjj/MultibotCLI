@@ -66,12 +66,6 @@ internal class GnomeoCommandConfig(string botName, string commandName, ILogger l
                     Title = "Gnomeo",
                     ImageFileName = "gnomeo5.png",
                 },
-                new()
-                {
-                    Quote = "Tybalt, you just crossed the line!",
-                    Title = "Gnomeo",
-                    ImageFileName = "gnomeo6.png",
-                },
             ],
         };
     }
@@ -122,7 +116,7 @@ internal class GnomeoCommand : IBotCommand
                 return Task.FromResult(false);
 
             var rng = new Random();
-            var randomGnomeo = gnomeo[rng.Next(gnomeo.Count)];
+            var randomGnomeo = gnomeo[Random.Shared.Next(gnomeo.Count)];
 
             Message = randomGnomeo.Quote;
             EmbedTitle = randomGnomeo.Title;
