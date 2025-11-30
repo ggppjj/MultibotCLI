@@ -7,14 +7,14 @@ using Serilog;
 
 namespace MultiBot.Commands;
 
-public class MovieData
+public struct MovieData()
 {
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string ImageFileName { get; set; } = string.Empty;
 }
 
-public class CinephileConfig
+public class CinephileConfig()
 {
     public List<MovieData> Movies { get; set; } = [];
 }
@@ -23,38 +23,37 @@ public class CinephileConfig
 [JsonSerializable(typeof(CinephileConfig))]
 internal partial class CinephileConfigJsonContext : JsonSerializerContext { }
 
-internal class CinephileCommandConfig : CommandConfigBase<CinephileConfig>
+internal class CinephileCommandConfig(string botName, string commandName, ILogger logger)
+    : CommandConfigBase<CinephileConfig>(botName, commandName, logger)
 {
     protected override JsonSerializerContext JsonContext => CinephileConfigJsonContext.Default;
     protected override JsonTypeInfo<CinephileConfig> JsonTypeInfo =>
         CinephileConfigJsonContext.Default.CinephileConfig;
 
-    public CinephileCommandConfig(string botName, string commandName, ILogger logger)
-        : base(botName, commandName, logger) { }
-
     protected override CinephileConfig CreateDefaultConfig()
     {
         return new CinephileConfig
         {
+            //Default data, mostly to generate a config to demonstrate the structure.
             Movies =
             [
-                new MovieData
+                new()
                 {
                     Title = "Movie 1",
                     Description = "A dark film of adventure and friendship.",
-                    ImageFileName = "image1.png",
+                    ImageFileName = "cinephile1.png",
                 },
-                new MovieData
+                new()
                 {
                     Title = "Movie 2",
                     Description = "An epic tale of adventure and heroism.",
-                    ImageFileName = "image2.png",
+                    ImageFileName = "cinephile2.png",
                 },
-                new MovieData
+                new()
                 {
                     Title = "Movie 3",
                     Description = "A classic adventure film that never gets old.",
-                    ImageFileName = "image3.png",
+                    ImageFileName = "cinephile3.png",
                 },
             ],
         };
@@ -70,6 +69,7 @@ internal class CinephileCommand : IBotCommand
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
     public BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
+    public IBotResponse Response { get; }
 
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
@@ -81,25 +81,22 @@ internal class CinephileCommand : IBotCommand
 
     internal CinephileCommand(IBot originatingBot)
     {
-        _logger = Log.Logger.ForContext<CinephileCommand>();
         OriginatingBot = originatingBot;
-
+        _logger = Log.Logger.ForContext<CinephileCommand>();
         _config = new CinephileCommandConfig(originatingBot.Name, Name, _logger);
-
-        Response = new DiscordResponse(this);
+        Response = new CinephileResponse(this);
     }
 
-    public IBotResponse Response { get; }
-
-    internal class DiscordResponse(IBotCommand command) : IBotResponse
+    internal class CinephileResponse(IBotCommand command) : IBotResponse
     {
+        //Default text is intentionally weird, should never be seen but would be funny if it were.
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public IBotCommand OriginatingCommand { get; } = command;
-        public string Message { get; set; } = "Here's your cinephile image!";
+        public string Message { get; set; } = "Movie!";
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-        public string? EmbedTitle { get; set; } = null;
-        public string? EmbedDescription { get; set; } = null;
+        public string? EmbedTitle { get; set; } = "MOvue!";
+        public string? EmbedDescription { get; set; } = "movie";
 
         private readonly CinephileCommand _originatingCinephileCommand = (
             command as CinephileCommand
@@ -110,9 +107,7 @@ internal class CinephileCommand : IBotCommand
             var movies = _originatingCinephileCommand._config.Config.Movies;
 
             if (movies.Count == 0)
-            {
                 return Task.FromResult(false);
-            }
 
             var rng = new Random();
             var randomMovie = movies[rng.Next(movies.Count)];

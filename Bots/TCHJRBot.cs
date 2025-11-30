@@ -21,6 +21,7 @@ internal class TCHJRBot : IBot
         _logger = LogController.SetupLogging(typeof(TCHJRBot));
         _logger.Information("Starting...");
         Commands.Add(new CinephileCommand(this));
+        Commands.Add(new GnomeoCommand(this));
         try
         {
             _platforms.Add(new DiscordPlatform(this));
