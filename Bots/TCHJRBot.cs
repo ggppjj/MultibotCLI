@@ -22,10 +22,25 @@ internal class TCHJRBot : IBot
         _logger.Information("Starting...");
         Commands.Add(new CinephileCommand(this));
         Commands.Add(new GnomeoCommand(this));
+        Commands.Add(new RandomImdbCommand(this));
+    }
+
+    public async Task<bool> Init()
+    {
+        var initTasks = Commands.Select(c => c.Init()).ToList();
+        var results = await Task.WhenAll(initTasks);
+
+        for (int i = 0; i < results.Length; i++)
+        {
+            if (!results[i])
+                _logger.Warning($"Command '{Commands[i].Name}' failed to initialize.");
+        }
+
         try
         {
             _platforms.Add(new DiscordPlatform(this));
             _logger.Information("Started.");
+            return true;
         }
         catch (InvalidDataException e)
         {

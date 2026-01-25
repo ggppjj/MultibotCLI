@@ -18,4 +18,5 @@ public interface IBotCommand
     IBotResponse Response { get; }
     List<BotPlatforms> CommandPlatforms { get; }
     IBot OriginatingBot { get; }
+    Task<bool> Init();
 }

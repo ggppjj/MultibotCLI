@@ -151,35 +151,46 @@ internal class DiscordPlatform : IBotPlatform
                 );
                 return;
             }
-
-            var embed = new EmbedProperties()
-                .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
-                .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
-
-            if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
+            var messageProps = new InteractionMessageProperties
             {
-                embed.Image = new EmbedImageProperties(
-                    $"attachment://{matchingCommand.Response.EmbedFileName}"
-                );
-            }
+                Content = matchingCommand.Response.Message,
+            };
+            if (
+                !string.IsNullOrEmpty(matchingCommand.Response.EmbedTitle)
+                || !string.IsNullOrEmpty(matchingCommand.Response.EmbedDescription)
+            )
+            {
+                var embed = new EmbedProperties()
+                    .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
+                    .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
 
-            var messageProps = new InteractionMessageProperties();
-            messageProps.AddEmbeds(embed);
+                if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
+                {
+                    embed.Image = new EmbedImageProperties(
+                        $"attachment://{matchingCommand.Response.EmbedFileName}"
+                    );
+                }
+
+                messageProps.AddEmbeds(embed);
+            }
 
             if (
                 !string.IsNullOrEmpty(matchingCommand.Response.EmbedFilePath)
                 && !string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName)
             )
             {
-                using var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
+                await using var fileStream = File.OpenRead(matchingCommand.Response.EmbedFilePath);
                 var attachment = new AttachmentProperties(
                     matchingCommand.Response.EmbedFileName,
                     fileStream
                 );
                 messageProps.AddAttachments(attachment);
+                await interaction.SendFollowupMessageAsync(messageProps);
             }
-
-            await interaction.SendFollowupMessageAsync(messageProps);
+            else
+            {
+                await interaction.SendFollowupMessageAsync(messageProps);
+            }
         }
         catch (Exception ex)
         {
@@ -249,19 +260,24 @@ internal class DiscordPlatform : IBotPlatform
                 return;
             }
 
-            var embed = new EmbedProperties()
-                .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
-                .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
-
-            if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
-            {
-                embed.Image = new EmbedImageProperties(
-                    $"attachment://{matchingCommand.Response.EmbedFileName}"
-                );
-            }
-
             var messageProps = new ReplyMessageProperties();
-            messageProps.AddEmbeds(embed);
+
+            if (
+                !string.IsNullOrEmpty(matchingCommand.Response.EmbedTitle)
+                || !string.IsNullOrEmpty(matchingCommand.Response.EmbedDescription)
+            )
+            {
+                var embed = new EmbedProperties()
+                    .WithTitle(matchingCommand.Response.EmbedTitle ?? string.Empty)
+                    .WithDescription(matchingCommand.Response.EmbedDescription ?? string.Empty);
+                if (!string.IsNullOrEmpty(matchingCommand.Response.EmbedFileName))
+                {
+                    embed.Image = new EmbedImageProperties(
+                        $"attachment://{matchingCommand.Response.EmbedFileName}"
+                    );
+                }
+                messageProps.AddEmbeds(embed);
+            }
 
             if (
                 !string.IsNullOrEmpty(matchingCommand.Response.EmbedFilePath)
@@ -274,9 +290,12 @@ internal class DiscordPlatform : IBotPlatform
                     fileStream
                 );
                 messageProps.AddAttachments(attachment);
+                await message.ReplyAsync(messageProps);
             }
-
-            await message.ReplyAsync(messageProps);
+            else
+            {
+                await message.ReplyAsync(messageProps);
+            }
         }
         catch (Exception ex)
         {

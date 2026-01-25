@@ -52,6 +52,8 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 try
 {
     bots.Add(new TCHJRBot());
+    foreach (var bot in bots)
+        await bot.Init();
     logger.Information("Started.");
     Task.Delay(Timeout.Infinite, shutdownCts.Token).Wait();
 }

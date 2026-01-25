@@ -115,10 +115,13 @@ internal class CinephileCommand : IBotCommand
             EmbedFileName = randomMovie.ImageFileName;
             EmbedFilePath = Path.Combine(
                 _originatingCinephileCommand._imagesDirectory,
+                "cinephile",
                 randomMovie.ImageFileName
             );
 
             return Task.FromResult(true);
         }
     }
+
+    public Task<bool> Init() => Task.FromResult(true);
 }

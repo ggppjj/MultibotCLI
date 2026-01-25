@@ -82,7 +82,8 @@ internal class GnomeoCommand : IBotCommand
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Resources",
-        "Images"
+        "Images",
+        "Gnomeo"
     );
 
     private readonly GnomeoCommandConfig _config;
@@ -106,11 +107,10 @@ internal class GnomeoCommand : IBotCommand
         public string? EmbedTitle { get; set; } = "Gnome.";
         public string? EmbedDescription { get; set; } = "Gnome.";
         public IBotCommand OriginatingCommand { get; } = command;
-        private readonly GnomeoCommand _originatingGnomeoCommand = (command as GnomeoCommand)!;
 
         public Task<bool> PrepareResponse()
         {
-            var gnomeo = _originatingGnomeoCommand._config.Config.Gnomeo;
+            var gnomeo = (OriginatingCommand as GnomeoCommand)!._config.Config.Gnomeo;
 
             if (gnomeo.Count == 0)
                 return Task.FromResult(false);
@@ -122,11 +122,13 @@ internal class GnomeoCommand : IBotCommand
             EmbedDescription = randomGnomeo.Quote;
             EmbedFileName = randomGnomeo.ImageFileName;
             EmbedFilePath = Path.Combine(
-                _originatingGnomeoCommand._imagesDirectory,
+                (OriginatingCommand as GnomeoCommand)!._imagesDirectory,
                 randomGnomeo.ImageFileName
             );
 
             return Task.FromResult(true);
         }
     }
+
+    public Task<bool> Init() => Task.FromResult(true);
 }
