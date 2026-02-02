@@ -1,8 +1,8 @@
 ﻿using System.Text.Json.Serialization;
+using LibMultibot.Helper_Classes;
+using LibMultibot.Interfaces;
 using Microsoft.Extensions.Configuration;
-using LibMultiBot.Bots;
-using LibMultiBot.Helper_Classes;
-using LibMultiBot.Interfaces;
+using MultibotCLI.Bots;
 using Serilog;
 
 _ = args;

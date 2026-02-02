@@ -4,12 +4,12 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using CsvHelper;
 using CsvHelper.Configuration;
-using MultiBot.Helper_Classes;
-using MultiBot.Interfaces;
-using MultiBot.Platforms;
+using LibMultibot.Helper_Classes;
+using LibMultibot.Interfaces;
+using LibMultibot.Platforms;
 using Serilog;
 
-namespace MultiBot.Commands;
+namespace MultibotCLI.Commands;
 
 public struct InternalImdbData()
 {

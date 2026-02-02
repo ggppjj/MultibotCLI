@@ -1,10 +1,10 @@
-﻿using MultiBot.Commands;
-using MultiBot.Helper_Classes;
-using MultiBot.Interfaces;
-using MultiBot.Platforms;
+﻿using LibMultibot.Helper_Classes;
+using LibMultibot.Interfaces;
+using LibMultibot.Platforms;
+using MultibotCLI.Commands;
 using Serilog;
 
-namespace MultiBot.Bots;
+namespace MultibotCLI.Bots;
 
 internal class TCHJRBot : IBot
 {
