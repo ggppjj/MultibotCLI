@@ -1,0 +1,3 @@
+[submodule "LibMultibot"]
+	path = LibMultibot
+	url = https://github.com/ggppjj/LibMultibot
