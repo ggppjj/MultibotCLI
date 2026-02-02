@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.3.11415.281 d18.3
+VisualStudioVersion = 18.3.11415.281
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Multibot-CLI", "Multibot-CLI.csproj", "{AB126EA9-6EE0-47F8-A71B-8E99C63FC5E3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MultibotCLI", "MultibotCLI.csproj", "{AB126EA9-6EE0-47F8-A71B-8E99C63FC5E3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LibMultibot", "LibMultibot\LibMultibot.csproj", "{E6F02DCD-6326-7D99-8978-7FFA0DF3835D}"
 EndProject
