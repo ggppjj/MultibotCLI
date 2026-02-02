@@ -1,2 +1,2 @@
-# Multibot
+# Multibot CLI
 
