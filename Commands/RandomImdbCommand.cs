@@ -82,9 +82,7 @@ public class ImdbDataMap : ClassMap<InternalImdbData>
 public class ImdbConfig
 {
     public string ImdbDataUrl { get; set; } =
-        "URL to title.basics.tsv.gz here, ensure your use of this data is in compliance "
-        + "with the terms of the IMDB's licensing: "
-        + "https://help.imdb.com/article/imdb/general-information/can-i-use-imdb-data-in-my-software/G5JTRESSHJBBHTGX";
+        "URL to title.basics.tsv.gz here, ensure your use of this data is in compliance with the terms of the IMDB license: https://help.imdb.com/article/imdb/general-information/can-i-use-imdb-data-in-my-software/G5JTRESSHJBBHTGX";
 }
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -98,10 +96,7 @@ internal class ImdbCommandConfig(string botName, string commandName, ILogger log
     protected override JsonTypeInfo<ImdbConfig> JsonTypeInfo =>
         ImdbConfigJsonContext.Default.ImdbConfig;
 
-    protected override ImdbConfig CreateDefaultConfig()
-    {
-        return new ImdbConfig();
-    }
+    protected override ImdbConfig CreateDefaultConfig() => new();
 }
 
 internal class RandomImdbCommand : IBotCommand
