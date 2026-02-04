@@ -9,7 +9,8 @@ _ = args;
 
 List<IBot> bots = [];
 
-CancellationTokenSource? shutdownCts = new();
+CancellationTokenSource shutdownCts = new();
+CancellationToken cancellationToken = shutdownCts.Token;
 var shutdownCompleted = false;
 
 ConfigHelper.EnsureConfigDirectoriesExist();
@@ -51,7 +52,7 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 
 try
 {
-    bots.Add(new TCHJRBot());
+    bots.Add(new TCHJRBot(cancellationToken));
     foreach (var bot in bots)
         await bot.Init();
     logger.Information("Started.");
@@ -78,7 +79,7 @@ async Task Shutdown()
             tasks.Add(bot.Shutdown());
         await Task.WhenAll(tasks);
         shutdownCompleted = true;
-        shutdownCts?.Cancel();
+        shutdownCts.Cancel();
         logger.Information("Application shutdown completed.");
         Log.CloseAndFlush();
     }

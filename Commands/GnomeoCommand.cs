@@ -81,6 +81,7 @@ internal class GnomeoCommand : IBotCommand
     public bool IsActive { get; set; } = true;
     public BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
+    public CancellationToken CancellationToken { get; set; }
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Resources",
@@ -92,16 +93,19 @@ internal class GnomeoCommand : IBotCommand
     private readonly ILogger _logger;
     public IBotResponse Response { get; }
 
-    internal GnomeoCommand(IBot originatingBot)
+    internal GnomeoCommand(IBot originatingBot, CancellationToken cancellationToken = default)
     {
         OriginatingBot = originatingBot;
-
+        CancellationToken = cancellationToken;
         _logger = LogController.BotLogging.ForBotComponent<GnomeoCommand>(originatingBot);
         _config = new GnomeoCommandConfig(originatingBot.Name, Name, _logger);
-        Response = new DiscordResponse(this);
+        Response = new DiscordResponse(this, CancellationToken);
     }
 
-    internal class DiscordResponse(IBotCommand command) : IBotResponse
+    internal class DiscordResponse(
+        IBotCommand command,
+        CancellationToken cancellationToken = default
+    ) : IBotResponse
     {
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public string? Message { get; } = null;
@@ -111,6 +115,7 @@ internal class GnomeoCommand : IBotCommand
         public string? EmbedDescription { get; set; } = "Gnome.";
         public Color? EmbedColor { get; } = Color.FromArgb(255, 22, 44, 115);
         public IBotCommand OriginatingCommand { get; } = command;
+        public CancellationToken CancellationToken { get; set; } = cancellationToken;
 
         public Task<bool> PrepareResponse()
         {

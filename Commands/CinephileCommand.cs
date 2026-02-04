@@ -65,6 +65,7 @@ internal class CinephileCommand : IBotCommand
     public IBot OriginatingBot { get; }
     public bool IsActive { get; set; } = true;
     public string Name { get; } = "Cinephile";
+    public CancellationToken CancellationToken { get; set; }
     public string Description { get; } =
         "Roll the dice and come up craps! See if you can get the photo you were hoping for, or set the tone!";
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
@@ -80,15 +81,19 @@ internal class CinephileCommand : IBotCommand
     private readonly CinephileCommandConfig _config;
     private readonly ILogger _logger;
 
-    internal CinephileCommand(IBot originatingBot)
+    internal CinephileCommand(IBot originatingBot, CancellationToken cancellationToken = default)
     {
         OriginatingBot = originatingBot;
+        CancellationToken = cancellationToken;
         _logger = LogController.BotLogging.ForBotComponent<CinephileCommand>(OriginatingBot);
         _config = new CinephileCommandConfig(originatingBot.Name, Name, _logger);
         Response = new CinephileResponse(this);
     }
 
-    internal class CinephileResponse(IBotCommand command) : IBotResponse
+    internal class CinephileResponse(
+        IBotCommand command,
+        CancellationToken cancellationToken = default
+    ) : IBotResponse
     {
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public IBotCommand OriginatingCommand { get; } = command;
@@ -99,6 +104,7 @@ internal class CinephileCommand : IBotCommand
         public System.Drawing.Color test = new();
         public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "movie";
+        public CancellationToken CancellationToken { get; set; } = cancellationToken;
 
         private readonly CinephileCommand _originatingCinephileCommand = (
             command as CinephileCommand

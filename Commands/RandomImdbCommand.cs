@@ -111,12 +111,14 @@ internal class RandomImdbCommand : IBotCommand
     public BotCommandTypes CommandType { get; } = BotCommandTypes.SlashCommand;
     private readonly ILogger _logger;
     public IBotResponse Response { get; }
+    public CancellationToken CancellationToken { get; set; }
 
     internal List<ImdbData> ImdbDataList { get; set; } = [];
 
-    internal RandomImdbCommand(IBot originatingBot)
+    internal RandomImdbCommand(IBot originatingBot, CancellationToken cancellationToken = default)
     {
         OriginatingBot = originatingBot;
+        CancellationToken = cancellationToken;
         _logger = LogController.BotLogging.ForBotComponent<RandomImdbCommand>(OriginatingBot);
         _config = new ImdbCommandConfig(originatingBot.Name, Name, _logger);
         Response = new DiscordResponse(this);
@@ -132,6 +134,8 @@ internal class RandomImdbCommand : IBotCommand
         public Color? EmbedColor { get; } = null;
         public string? EmbedTitle { get; } = null;
         public string? EmbedDescription { get; } = null;
+        public CancellationToken CancellationToken { get; set; }
+
         private readonly Random random = new();
 
         public Task<bool> PrepareResponse()
@@ -177,14 +181,14 @@ internal class RandomImdbCommand : IBotCommand
                 if (!Directory.Exists(csvLocation))
                     Directory.CreateDirectory(csvLocation);
 
-                using (response = await client.GetAsync(url))
+                using (response = await client.GetAsync(url, CancellationToken))
                 {
                     response.EnsureSuccessStatusCode();
                     await using var downloadFileStream = new FileStream(
                         csvFullPath,
                         FileMode.Create
                     );
-                    await response.Content.CopyToAsync(downloadFileStream);
+                    await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
                 }
             }
             catch
@@ -205,11 +209,21 @@ internal class RandomImdbCommand : IBotCommand
         };
         using var csv = new CsvReader(reader, imdbCsvConfig);
         csv.Context.RegisterClassMap<ImdbDataMap>();
-        var tempImdbDataList = csv.GetRecords<InternalImdbData>()
-            .Where(x => !x.isAdult)
-            .Where(x => x.titleType == "movie" || x.titleType == "tvSeries")
-            .Where(x => x.startYear >= 1910)
-            .ToList();
+        var tempImdbDataList = new List<InternalImdbData>();
+
+        await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
+        {
+            CancellationToken.ThrowIfCancellationRequested();
+
+            if (
+                !record.isAdult
+                && (record.titleType == "movie" || record.titleType == "tvSeries")
+                && record.startYear >= 1910
+            )
+            {
+                tempImdbDataList.Add(record);
+            }
+        }
 
         ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
         return true;

@@ -14,11 +14,13 @@ internal class TCHJRBot : IBot
     private readonly List<IBotPlatform> _platforms = [];
     private readonly ILogger _logger;
     public bool IsActive { get; set; } = true;
+    public CancellationToken CancellationToken { get; set; }
 
     public void OnCommand(string message) => Console.WriteLine("Event received: " + message);
 
-    internal TCHJRBot()
+    internal TCHJRBot(CancellationToken cancellationToken)
     {
+        CancellationToken = cancellationToken;
         _logger = LogController.SetupLogging(typeof(TCHJRBot));
         _logger.Information("Starting...");
         Commands.Add(new CinephileCommand(this));
