@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
@@ -69,7 +68,6 @@ internal class CinephileCommand : IBotCommand
     public string Description { get; } =
         "Roll the dice and come up craps! See if you can get the photo you were hoping for, or set the tone!";
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
-    public bool IsActive { get; set; } = true;
     public BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
     public IBotResponse Response { get; }
