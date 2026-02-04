@@ -1,9 +1,9 @@
+using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -94,7 +94,8 @@ internal class CinephileCommand : IBotCommand
         public string? Message { get; } = null;
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-        public Color? EmbedColor { get; } = new(247, 206, 70);
+        public Color? EmbedColor { get; } = Color.FromArgb(255, 247, 206, 70);
+        public System.Drawing.Color test = new();
         public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "movie";
 
@@ -110,7 +111,7 @@ internal class CinephileCommand : IBotCommand
                 return Task.FromResult(false);
 
             var randomMovie = movies[Random.Shared.Next(movies.Count)];
-
+            test = System.Drawing.Color.FromArgb(0, 0, 0, 0);
             EmbedDescription = randomMovie.Description;
             EmbedTitle = randomMovie.Title;
             EmbedFileName = randomMovie.ImageFileName;

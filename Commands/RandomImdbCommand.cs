@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json.Serialization;
@@ -7,7 +8,6 @@ using CsvHelper.Configuration;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -125,7 +125,7 @@ internal class RandomImdbCommand : IBotCommand
     {
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public IBotCommand OriginatingCommand { get; } = command;
-        public string Message { get; set; } = "";
+        public string? Message { get; set; } = "";
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
         public Color? EmbedColor { get; } = null;

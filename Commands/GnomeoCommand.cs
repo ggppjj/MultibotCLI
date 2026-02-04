@@ -1,9 +1,9 @@
+using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -107,7 +107,7 @@ internal class GnomeoCommand : IBotCommand
         public string? EmbedFileName { get; set; } = null;
         public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "Gnome.";
-        public Color? EmbedColor { get; } = new(22, 44, 115);
+        public Color? EmbedColor { get; } = Color.FromArgb(255, 22, 44, 115);
         public IBotCommand OriginatingCommand { get; } = command;
 
         public Task<bool> PrepareResponse()
