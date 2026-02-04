@@ -13,6 +13,7 @@ internal class TCHJRBot : IBot
 
     private readonly List<IBotPlatform> _platforms = [];
     private readonly ILogger _logger;
+    public bool IsActive { get; set; } = true;
 
     public void OnCommand(string message) => Console.WriteLine("Event received: " + message);
 

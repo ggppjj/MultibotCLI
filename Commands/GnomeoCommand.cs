@@ -78,6 +78,7 @@ internal class GnomeoCommand : IBotCommand
     public string Name { get; } = "Gnomeo";
     public string Description { get; } = "Gnomeo.";
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
+    public bool IsActive { get; set; } = true;
     public BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
     private readonly string _imagesDirectory = Path.Combine(
@@ -112,6 +113,9 @@ internal class GnomeoCommand : IBotCommand
 
         public Task<bool> PrepareResponse()
         {
+            if (!OriginatingCommand.IsActive)
+                return Task.FromResult(false);
+
             var gnomeo = (OriginatingCommand as GnomeoCommand)!._config.Config.Gnomeo;
 
             if (gnomeo.Count == 0)

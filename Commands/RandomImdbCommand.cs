@@ -104,6 +104,7 @@ internal class RandomImdbCommand : IBotCommand
 {
     public IBot OriginatingBot { get; }
     public string Name { get; } = "random-imdb";
+    public bool IsActive { get; set; } = true;
     public string Description { get; } = "Get a random movie or TV series from IMDB";
     private readonly ImdbCommandConfig _config;
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
@@ -135,6 +136,9 @@ internal class RandomImdbCommand : IBotCommand
 
         public Task<bool> PrepareResponse()
         {
+            if (!OriginatingCommand.IsActive)
+                return Task.FromResult(false);
+
             var imdb = (OriginatingCommand as RandomImdbCommand)!.ImdbDataList;
 
             if (imdb.Count == 0)
