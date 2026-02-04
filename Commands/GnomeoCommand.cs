@@ -95,7 +95,8 @@ internal class GnomeoCommand : IBotCommand
     internal GnomeoCommand(IBot originatingBot)
     {
         OriginatingBot = originatingBot;
-        _logger = Log.Logger.ForContext<GnomeoCommand>();
+
+        _logger = LogController.BotLogging.ForBotComponent<GnomeoCommand>(originatingBot);
         _config = new GnomeoCommandConfig(originatingBot.Name, Name, _logger);
         Response = new DiscordResponse(this);
     }

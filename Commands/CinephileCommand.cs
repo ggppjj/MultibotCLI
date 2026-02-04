@@ -83,7 +83,7 @@ internal class CinephileCommand : IBotCommand
     internal CinephileCommand(IBot originatingBot)
     {
         OriginatingBot = originatingBot;
-        _logger = Log.Logger.ForContext<CinephileCommand>();
+        _logger = LogController.BotLogging.ForBotComponent<CinephileCommand>(OriginatingBot);
         _config = new CinephileCommandConfig(originatingBot.Name, Name, _logger);
         Response = new CinephileResponse(this);
     }

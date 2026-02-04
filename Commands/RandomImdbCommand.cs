@@ -117,7 +117,7 @@ internal class RandomImdbCommand : IBotCommand
     internal RandomImdbCommand(IBot originatingBot)
     {
         OriginatingBot = originatingBot;
-        _logger = Log.Logger.ForContext<RandomImdbCommand>();
+        _logger = LogController.BotLogging.ForBotComponent<RandomImdbCommand>(OriginatingBot);
         _config = new ImdbCommandConfig(originatingBot.Name, Name, _logger);
         Response = new DiscordResponse(this);
     }
