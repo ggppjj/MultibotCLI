@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
@@ -63,6 +64,7 @@ internal class CinephileCommandConfig(string botName, string commandName, ILogge
 internal class CinephileCommand : IBotCommand
 {
     public IBot OriginatingBot { get; }
+    public bool IsActive { get; set; } = true;
     public string Name { get; } = "Cinephile";
     public string Description { get; } =
         "Roll the dice and come up craps! See if you can get the photo you were hoping for, or set the tone!";
@@ -95,7 +97,7 @@ internal class CinephileCommand : IBotCommand
         public string? Message { get; } = null;
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-        public Color? EmbedColor { get; } = Color.FromArgb(255, 247, 206, 70);
+        public Color? EmbedColor { get; } = Color.FromArgb(255, 255, 204, 0);
         public System.Drawing.Color test = new();
         public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "movie";
