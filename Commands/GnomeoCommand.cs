@@ -3,6 +3,7 @@ using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -101,11 +102,12 @@ internal class GnomeoCommand : IBotCommand
     internal class DiscordResponse(IBotCommand command) : IBotResponse
     {
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
-        public string Message { get; set; } = "Gnome.";
+        public string? Message { get; } = null;
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-        public string? EmbedTitle { get; set; } = "Gnome.";
+        public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "Gnome.";
+        public Color? EmbedColor { get; } = new(22, 44, 115);
         public IBotCommand OriginatingCommand { get; } = command;
 
         public Task<bool> PrepareResponse()
@@ -116,8 +118,6 @@ internal class GnomeoCommand : IBotCommand
                 return Task.FromResult(false);
 
             var randomGnomeo = gnomeo[Random.Shared.Next(gnomeo.Count)];
-
-            Message = randomGnomeo.Quote;
             EmbedTitle = randomGnomeo.Title;
             EmbedDescription = randomGnomeo.Quote;
             EmbedFileName = randomGnomeo.ImageFileName;

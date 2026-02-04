@@ -7,6 +7,7 @@ using CsvHelper.Configuration;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -127,11 +128,9 @@ internal class RandomImdbCommand : IBotCommand
         public string Message { get; set; } = "";
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-
+        public Color? EmbedColor { get; } = null;
         public string? EmbedTitle { get; } = null;
-
         public string? EmbedDescription { get; } = null;
-
         private readonly Random random = new();
 
         public Task<bool> PrepareResponse()

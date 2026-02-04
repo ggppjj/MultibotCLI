@@ -3,6 +3,7 @@ using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using NetCord;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -90,10 +91,11 @@ internal class CinephileCommand : IBotCommand
     {
         public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
         public IBotCommand OriginatingCommand { get; } = command;
-        public string Message { get; set; } = "Movie!";
+        public string? Message { get; } = null;
         public string? EmbedFilePath { get; set; } = null;
         public string? EmbedFileName { get; set; } = null;
-        public string? EmbedTitle { get; set; } = "MOvue!";
+        public Color? EmbedColor { get; } = new(247, 206, 70);
+        public string? EmbedTitle { get; set; } = null;
         public string? EmbedDescription { get; set; } = "movie";
 
         private readonly CinephileCommand _originatingCinephileCommand = (
@@ -109,9 +111,8 @@ internal class CinephileCommand : IBotCommand
 
             var randomMovie = movies[Random.Shared.Next(movies.Count)];
 
-            Message = randomMovie.Description;
-            EmbedTitle = randomMovie.Title;
             EmbedDescription = randomMovie.Description;
+            EmbedTitle = randomMovie.Title;
             EmbedFileName = randomMovie.ImageFileName;
             EmbedFilePath = Path.Combine(
                 _originatingCinephileCommand._imagesDirectory,
