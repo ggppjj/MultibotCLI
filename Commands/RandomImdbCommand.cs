@@ -163,96 +163,111 @@ internal class RandomImdbCommand : IBotCommand
 
     public async Task<bool> Init()
     {
-        var csvLocation = Path.Combine(AppContext.BaseDirectory, "Resources", "IMDB");
-        var csvFileName = "title.basics.tsv.gz";
-        var csvFullPath = Path.Combine(csvLocation, csvFileName);
-        var url = _config.Config.ImdbDataUrl;
-
-        if (!File.Exists(csvFullPath))
+        try
         {
-            try
-            {
-                using HttpClient client = new();
-                var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, url));
+            var csvLocation = Path.Combine(AppContext.BaseDirectory, "Resources", "IMDB");
+            var csvFileName = "title.basics.tsv.gz";
+            var csvFullPath = Path.Combine(csvLocation, csvFileName);
+            var url = _config.Config.ImdbDataUrl;
 
-                if (!response.IsSuccessStatusCode)
+            if (!File.Exists(csvFullPath))
+            {
+                try
                 {
-                    _logger.Error(response.StatusCode.ToString());
+                    using HttpClient client = new();
+                    var response = await client.SendAsync(
+                        new HttpRequestMessage(HttpMethod.Head, url)
+                    );
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.Error(response.StatusCode.ToString());
+                        return false;
+                    }
+
+                    _logger.Information("Downloading csv...");
+
+                    if (!Directory.Exists(csvLocation))
+                        Directory.CreateDirectory(csvLocation);
+
+                    using (response = await client.GetAsync(url, CancellationToken))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        await using var downloadFileStream = new FileStream(
+                            csvFullPath,
+                            FileMode.Create
+                        );
+                        await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
+                    }
+                }
+                catch
+                {
+                    _logger.Error("Unable to reach CSV URL!");
                     return false;
                 }
+            }
 
-                _logger.Information("Downloading csv...");
+            await using var fileStream = new FileStream(
+                csvFullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096,
+                useAsync: true
+            );
 
-                if (!Directory.Exists(csvLocation))
-                    Directory.CreateDirectory(csvLocation);
+            await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
+            using var decompressedStream = new MemoryStream();
+            var buffer = new byte[81920];
+            int bytesRead;
+            _logger.Information("Loading IMDB data...");
 
-                using (response = await client.GetAsync(url, CancellationToken))
+            while ((bytesRead = await gzipStream.ReadAsync(buffer, CancellationToken)) > 0)
+            {
+                CancellationToken.ThrowIfCancellationRequested();
+                decompressedStream.Write(buffer, 0, bytesRead);
+            }
+
+            decompressedStream.Position = 0;
+            using var reader = new StreamReader(decompressedStream);
+
+            var imdbCsvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                HasHeaderRecord = true,
+                Delimiter = "\t",
+                BadDataFound = null,
+                MissingFieldFound = null,
+            };
+
+            using var csv = new CsvReader(reader, imdbCsvConfig);
+            csv.Context.RegisterClassMap<ImdbDataMap>();
+            var tempImdbDataList = new List<InternalImdbData>();
+
+            await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
+            {
+                if (
+                    !record.isAdult
+                    && (record.titleType == "movie" || record.titleType == "tvSeries")
+                    && record.startYear >= 1910
+                )
                 {
-                    response.EnsureSuccessStatusCode();
-                    await using var downloadFileStream = new FileStream(
-                        csvFullPath,
-                        FileMode.Create
-                    );
-                    await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
+                    tempImdbDataList.Add(record);
                 }
             }
-            catch
-            {
-                _logger.Error("Unable to reach CSV URL!");
-                return false;
-            }
+
+            ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
+            _logger.Information("IMDB data loaded!");
+            return true;
         }
-
-        await using var fileStream = new FileStream(
-            csvFullPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 4096,
-            useAsync: true
-        );
-
-        await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
-        using var decompressedStream = new MemoryStream();
-        var buffer = new byte[81920];
-        int bytesRead;
-        _logger.Information("Loading IMDB data...");
-
-        while ((bytesRead = await gzipStream.ReadAsync(buffer, CancellationToken)) > 0)
+        catch (OperationCanceledException)
         {
-            CancellationToken.ThrowIfCancellationRequested();
-            decompressedStream.Write(buffer, 0, bytesRead);
+            _logger.Information("IMDB load cancelled due to shutdown.");
+            return false;
         }
-
-        decompressedStream.Position = 0;
-        using var reader = new StreamReader(decompressedStream);
-
-        var imdbCsvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
+        catch (Exception ex)
         {
-            HasHeaderRecord = true,
-            Delimiter = "\t",
-            BadDataFound = null,
-            MissingFieldFound = null,
-        };
-
-        using var csv = new CsvReader(reader, imdbCsvConfig);
-        csv.Context.RegisterClassMap<ImdbDataMap>();
-        var tempImdbDataList = new List<InternalImdbData>();
-
-        await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
-        {
-            if (
-                !record.isAdult
-                && (record.titleType == "movie" || record.titleType == "tvSeries")
-                && record.startYear >= 1910
-            )
-            {
-                tempImdbDataList.Add(record);
-            }
+            _logger.Error(ex, "IMDB initialization failed.");
+            return false;
         }
-
-        ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
-        _logger.Information("IMDB data loaded!");
-        return true;
     }
 }
