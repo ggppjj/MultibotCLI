@@ -197,8 +197,15 @@ internal class RandomImdbCommand : IBotCommand
                 return false;
             }
         }
-        using var fileStream = new FileStream(csvFullPath, FileMode.Open);
-        using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
+        await using var fileStream = new FileStream(
+            csvFullPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 4096,
+            useAsync: true
+        );
+        await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);
         var imdbCsvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
@@ -213,8 +220,6 @@ internal class RandomImdbCommand : IBotCommand
 
         await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
         {
-            CancellationToken.ThrowIfCancellationRequested();
-
             if (
                 !record.isAdult
                 && (record.titleType == "movie" || record.titleType == "tvSeries")
