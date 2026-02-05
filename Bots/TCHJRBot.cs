@@ -23,9 +23,9 @@ internal class TCHJRBot : IBot
         CancellationToken = cancellationToken;
         _logger = LogController.SetupLogging(typeof(TCHJRBot));
         _logger.Information("Starting...");
-        Commands.Add(new CinephileCommand(this));
-        Commands.Add(new GnomeoCommand(this));
-        Commands.Add(new RandomImdbCommand(this));
+        Commands.Add(new CinephileCommand(this, CancellationToken));
+        Commands.Add(new GnomeoCommand(this, CancellationToken));
+        Commands.Add(new RandomImdbCommand(this, CancellationToken));
     }
 
     public async Task<bool> Init()
