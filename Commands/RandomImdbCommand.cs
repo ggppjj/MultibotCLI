@@ -39,6 +39,7 @@ public class ImdbDataMap : ClassMap<InternalImdbData>
         Map(m => m.primaryTitle).Convert(row => row.Row.GetField("primaryTitle") ?? string.Empty);
         Map(m => m.originalTitle).Convert(row => row.Row.GetField("originalTitle") ?? string.Empty);
         Map(m => m.isAdult).Convert(row => row.Row.GetField("isAdult") == "1");
+
         Map(m => m.startYear)
             .Convert(row =>
             {
@@ -49,6 +50,7 @@ public class ImdbDataMap : ClassMap<InternalImdbData>
                     return year;
                 return null;
             });
+
         Map(m => m.endYear)
             .Convert(row =>
             {
@@ -59,6 +61,7 @@ public class ImdbDataMap : ClassMap<InternalImdbData>
                     return year;
                 return null;
             });
+
         Map(m => m.runtimeMinutes)
             .Convert(row =>
             {
@@ -69,6 +72,7 @@ public class ImdbDataMap : ClassMap<InternalImdbData>
                     return mins;
                 return null;
             });
+
         Map(m => m.genres)
             .Convert(row =>
             {
@@ -176,6 +180,7 @@ internal class RandomImdbCommand : IBotCommand
                     _logger.Error(response.StatusCode.ToString());
                     return false;
                 }
+
                 _logger.Information("Downloading csv...");
 
                 if (!Directory.Exists(csvLocation))
@@ -197,6 +202,7 @@ internal class RandomImdbCommand : IBotCommand
                 return false;
             }
         }
+
         await using var fileStream = new FileStream(
             csvFullPath,
             FileMode.Open,
@@ -205,8 +211,22 @@ internal class RandomImdbCommand : IBotCommand
             bufferSize: 4096,
             useAsync: true
         );
+
         await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
+        using var decompressedStream = new MemoryStream();
+        var buffer = new byte[81920];
+        int bytesRead;
+        _logger.Information("Loading IMDB data...");
+
+        while ((bytesRead = await gzipStream.ReadAsync(buffer, CancellationToken)) > 0)
+        {
+            CancellationToken.ThrowIfCancellationRequested();
+            decompressedStream.Write(buffer, 0, bytesRead);
+        }
+
+        decompressedStream.Position = 0;
+        using var reader = new StreamReader(decompressedStream);
+
         var imdbCsvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,
@@ -214,6 +234,7 @@ internal class RandomImdbCommand : IBotCommand
             BadDataFound = null,
             MissingFieldFound = null,
         };
+
         using var csv = new CsvReader(reader, imdbCsvConfig);
         csv.Context.RegisterClassMap<ImdbDataMap>();
         var tempImdbDataList = new List<InternalImdbData>();
@@ -231,6 +252,7 @@ internal class RandomImdbCommand : IBotCommand
         }
 
         ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
+        _logger.Information("IMDB data loaded!");
         return true;
     }
 }
