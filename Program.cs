@@ -52,7 +52,7 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 
 try
 {
-    bots.Add(new TCHJRBot(cancellationToken));
+    bots.Add(new TCHJRBot(shutdownCts));
     foreach (var bot in bots)
         await bot.Init();
     logger.Information("Started.");

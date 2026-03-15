@@ -4,6 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -82,6 +83,10 @@ internal class GnomeoCommand : IBotCommand
     public BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
     public CancellationToken CancellationToken { get; set; }
+    public bool IsAdminCommand { get; } = false;
+    public List<User>? AdminUsers { get; set; }
+    public List<ulong>? RestrictedToChannelIDs { get; set; }
+    public string? MessageContext { get; set; }
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Resources",

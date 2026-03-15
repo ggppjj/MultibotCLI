@@ -4,6 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -66,6 +67,10 @@ internal class CinephileCommand : IBotCommand
     public bool IsActive { get; set; } = true;
     public string Name { get; } = "Cinephile";
     public CancellationToken CancellationToken { get; set; }
+    public bool IsAdminCommand { get; } = false;
+    public List<User>? AdminUsers { get; set; }
+    public List<ulong>? RestrictedToChannelIDs { get; set; }
+    public string? MessageContext { get; set; }
     public string Description { get; } =
         "Roll the dice and come up craps! See if you can get the photo you were hoping for, or set the tone!";
     public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];

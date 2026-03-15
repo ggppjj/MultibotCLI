@@ -8,6 +8,7 @@ using CsvHelper.Configuration;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
+using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -116,6 +117,10 @@ internal class RandomImdbCommand : IBotCommand
     private readonly ILogger _logger;
     public IBotResponse Response { get; }
     public CancellationToken CancellationToken { get; set; }
+    public bool IsAdminCommand { get; } = false;
+    public List<User>? AdminUsers { get; set; }
+    public List<ulong>? RestrictedToChannelIDs { get; set; }
+    public string? MessageContext { get; set; }
 
     internal List<ImdbData> ImdbDataList { get; set; } = [];
 
