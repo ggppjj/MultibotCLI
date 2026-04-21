@@ -1,15 +1,16 @@
+using System.Collections.Concurrent;
 using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using LibMultibot;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
 
-public struct MovieData()
+public record struct MovieData()
 {
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -61,22 +62,19 @@ internal class CinephileCommandConfig(string botName, string commandName, ILogge
     }
 }
 
-internal class CinephileCommand : IBotCommand
+internal class CinephileCommand : CommandBase
 {
-    public IBot OriginatingBot { get; }
-    public bool IsActive { get; set; } = true;
-    public string Name { get; } = "Cinephile";
-    public CancellationToken CancellationToken { get; set; }
-    public bool IsAdminCommand { get; } = false;
-    public List<User>? AdminUsers { get; set; }
-    public List<ulong>? RestrictedToChannelIDs { get; set; }
-    public string? MessageContext { get; set; }
-    public string Description { get; } =
+    public override string Name { get; } = "Cinephile";
+    public override string Description { get; } =
         "Roll the dice and come up craps! See if you can get the photo you were hoping for, or set the tone!";
-    public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
-    public BotCommandTypes CommandType { get; } =
+    public override List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
+    public override BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
-    public IBotResponse Response { get; }
+    public override Color? EmbedColor { get; } = Color.FromArgb(255, 255, 204, 0);
+
+    internal int _lastSentIndex = -1;
+    internal readonly ConcurrentDictionary<ulong, ConcurrentQueue<int>> _preloadMeQueues = new();
+    internal readonly ConcurrentQueue<int> _preloadNextQueue = new();
 
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
@@ -84,61 +82,144 @@ internal class CinephileCommand : IBotCommand
         "Images"
     );
     private readonly CinephileCommandConfig _config;
-    private readonly ILogger _logger;
 
     internal CinephileCommand(IBot originatingBot, CancellationToken cancellationToken = default)
+        : base(originatingBot, cancellationToken)
     {
-        OriginatingBot = originatingBot;
-        CancellationToken = cancellationToken;
-        _logger = LogController.BotLogging.ForBotComponent<CinephileCommand>(OriginatingBot);
         _config = new CinephileCommandConfig(originatingBot.Name, Name, _logger);
-        Response = new CinephileResponse(this);
     }
 
-    internal class CinephileResponse(
-        IBotCommand command,
-        CancellationToken cancellationToken = default
-    ) : IBotResponse
+    public override Task<bool> PrepareResponse()
     {
-        public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
-        public IBotCommand OriginatingCommand { get; } = command;
-        public string? Message { get; } = null;
-        public string? EmbedFilePath { get; set; } = null;
-        public string? EmbedFileName { get; set; } = null;
-        public Color? EmbedColor { get; } = Color.FromArgb(255, 255, 204, 0);
-        public System.Drawing.Color test = new();
-        public string? EmbedTitle { get; set; } = null;
-        public string? EmbedDescription { get; set; } = "movie";
-        public CancellationToken CancellationToken { get; set; } = cancellationToken;
+        if (!IsActive)
+            return Task.FromResult(false);
 
-        private readonly CinephileCommand _originatingCinephileCommand = (
-            command as CinephileCommand
-        )!;
+        var movies = _config.Config.Movies;
+        if (movies.Count == 0)
+            return Task.FromResult(false);
 
-        public Task<bool> PrepareResponse()
+        Message = null;
+        EmbedTitle = null;
+        EmbedDescription = null;
+        EmbedFileName = null;
+        EmbedFilePath = null;
+
+        string? subCommand = null;
+        string? subArg = null;
+
+        if (!string.IsNullOrEmpty(MessageContext))
         {
-            if (!OriginatingCommand.IsActive)
-                return Task.FromResult(false);
+            var parts = MessageContext.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+                subCommand = parts[1].ToLowerInvariant();
+            if (parts.Length >= 3)
+                subArg = parts[2];
+        }
 
-            var movies = _originatingCinephileCommand._config.Config.Movies;
+        if (subCommand != null && subCommand.StartsWith("admin"))
+        {
+            var adminArg = subCommand["admin".Length..];
 
-            if (movies.Count == 0)
-                return Task.FromResult(false);
+            if (adminArg == "last")
+            {
+                if (_lastSentIndex < 0 || _lastSentIndex >= movies.Count)
+                {
+                    Message = "No movie has been sent yet.";
+                    return Task.FromResult(true);
+                }
+                SetMovieEmbed(_lastSentIndex, movies, includeIndex: true);
+                return Task.FromResult(true);
+            }
 
-            var randomMovie = movies[Random.Shared.Next(movies.Count)];
-            test = System.Drawing.Color.FromArgb(0, 0, 0, 0);
-            EmbedDescription = randomMovie.Description;
-            EmbedTitle = randomMovie.Title;
-            EmbedFileName = randomMovie.ImageFileName;
-            EmbedFilePath = Path.Combine(
-                _originatingCinephileCommand._imagesDirectory,
-                "cinephile",
-                randomMovie.ImageFileName
+            if (
+                int.TryParse(adminArg, out int entryNumber)
+                && entryNumber >= 1
+                && entryNumber <= movies.Count
+            )
+            {
+                SetMovieEmbed(entryNumber - 1, movies);
+                return Task.FromResult(true);
+            }
+
+            Message = $"Invalid admin index. Use 1 to {movies.Count}.";
+            return Task.FromResult(true);
+        }
+        else if (subCommand == "preloadme")
+        {
+            if (!MessageAuthorId.HasValue)
+            {
+                Message = "Cannot identify user for preloadme.";
+                return Task.FromResult(true);
+            }
+            if (!int.TryParse(subArg, out int idx) || idx < 1 || idx > movies.Count)
+            {
+                Message = $"Invalid index. Use 1 to {movies.Count}.";
+                return Task.FromResult(true);
+            }
+            var queue = _preloadMeQueues.GetOrAdd(
+                MessageAuthorId.Value,
+                _ => new ConcurrentQueue<int>()
             );
-
+            queue.Enqueue(idx - 1);
+            Message = $"Queued entry #{idx} for your next !cinephile.";
+            return Task.FromResult(true);
+        }
+        else if (subCommand == "preloadnext")
+        {
+            if (!int.TryParse(subArg, out int idx) || idx < 1 || idx > movies.Count)
+            {
+                Message = $"Invalid index. Use 1 to {movies.Count}.";
+                return Task.FromResult(true);
+            }
+            _preloadNextQueue.Enqueue(idx - 1);
+            Message = $"Queued entry #{idx} for the next !cinephile.";
+            return Task.FromResult(true);
+        }
+        else if (subCommand == "preloadclear")
+        {
+            _preloadMeQueues.Clear();
+            while (_preloadNextQueue.TryDequeue(out _)) { }
+            Message = "All preload queues cleared.";
+            return Task.FromResult(true);
+        }
+        else
+        {
+            int idx;
+            if (
+                MessageAuthorId.HasValue
+                && _preloadMeQueues.TryGetValue(MessageAuthorId.Value, out var userQueue)
+                && userQueue.TryDequeue(out int preloadedMe)
+                && preloadedMe >= 0
+                && preloadedMe < movies.Count
+            )
+            {
+                idx = preloadedMe;
+            }
+            else if (
+                _preloadNextQueue.TryDequeue(out int preloadedNext)
+                && preloadedNext >= 0
+                && preloadedNext < movies.Count
+            )
+            {
+                idx = preloadedNext;
+            }
+            else
+            {
+                idx = Random.Shared.Next(movies.Count);
+            }
+            SetMovieEmbed(idx, movies);
             return Task.FromResult(true);
         }
     }
 
-    public Task<bool> Init() => Task.FromResult(true);
+    private void SetMovieEmbed(int index, List<MovieData> movies, bool includeIndex = false)
+    {
+        _lastSentIndex = index;
+        var movie = movies[index];
+        var oneBased = index + 1;
+        EmbedDescription = includeIndex ? $"{movie.Description} {oneBased}" : movie.Description;
+        EmbedTitle = movie.Title;
+        EmbedFileName = movie.ImageFileName;
+        EmbedFilePath = Path.Combine(_imagesDirectory, "cinephile", movie.ImageFileName);
+    }
 }

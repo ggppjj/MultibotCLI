@@ -1,14 +1,13 @@
-using System.Drawing;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using CsvHelper;
 using CsvHelper.Configuration;
+using LibMultibot;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -105,68 +104,46 @@ internal class ImdbCommandConfig(string botName, string commandName, ILogger log
     protected override ImdbConfig CreateDefaultConfig() => new();
 }
 
-internal class RandomImdbCommand : IBotCommand
+internal class RandomImdbCommand : CommandBase, IHeartbeatInit
 {
-    public IBot OriginatingBot { get; }
-    public string Name { get; } = "random-imdb";
-    public bool IsActive { get; set; } = true;
-    public string Description { get; } = "Get a random movie or TV series from IMDB";
-    private readonly ImdbCommandConfig _config;
-    public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
-    public BotCommandTypes CommandType { get; } = BotCommandTypes.SlashCommand;
-    private readonly ILogger _logger;
-    public IBotResponse Response { get; }
-    public CancellationToken CancellationToken { get; set; }
-    public bool IsAdminCommand { get; } = false;
-    public List<User>? AdminUsers { get; set; }
-    public List<ulong>? RestrictedToChannelIDs { get; set; }
-    public string? MessageContext { get; set; }
+    public override string Name { get; } = "random-imdb";
+    public override string Description { get; } = "Get a random movie or TV series from IMDB";
+    public override List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
+    public override BotCommandTypes CommandType { get; } = BotCommandTypes.SlashCommand;
+    private bool _isInitialized = false;
+    public override bool IsInitialized => _isInitialized;
+    public IProgress<string>? InitProgress { get; set; }
 
     internal List<ImdbData> ImdbDataList { get; set; } = [];
+    private readonly ImdbCommandConfig _config;
 
     internal RandomImdbCommand(IBot originatingBot, CancellationToken cancellationToken = default)
+        : base(originatingBot, cancellationToken)
     {
-        OriginatingBot = originatingBot;
-        CancellationToken = cancellationToken;
-        _logger = LogController.BotLogging.ForBotComponent<RandomImdbCommand>(OriginatingBot);
         _config = new ImdbCommandConfig(originatingBot.Name, Name, _logger);
-        Response = new DiscordResponse(this);
     }
 
-    internal class DiscordResponse(IBotCommand command) : IBotResponse
+    public override Task<bool> PrepareResponse()
     {
-        public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
-        public IBotCommand OriginatingCommand { get; } = command;
-        public string? Message { get; set; } = "";
-        public string? EmbedFilePath { get; set; } = null;
-        public string? EmbedFileName { get; set; } = null;
-        public Color? EmbedColor { get; } = null;
-        public string? EmbedTitle { get; } = null;
-        public string? EmbedDescription { get; } = null;
-        public CancellationToken CancellationToken { get; set; }
+        if (!IsActive)
+            return Task.FromResult(false);
 
-        private readonly Random random = new();
-
-        public Task<bool> PrepareResponse()
+        if (!IsInitialized)
         {
-            if (!OriginatingCommand.IsActive)
-                return Task.FromResult(false);
-
-            var imdb = (OriginatingCommand as RandomImdbCommand)!.ImdbDataList;
-
-            if (imdb.Count == 0)
-                return Task.FromResult(false);
-
-            var index = random.Next(imdb.Count);
-            var entry = imdb[index];
-
-            Message = $"https://www.imdb.com/title/{entry.tconst}/";
-
+            Message = "Still loading IMDB data, please try again shortly.";
             return Task.FromResult(true);
         }
+
+        if (ImdbDataList.Count == 0)
+            return Task.FromResult(false);
+
+        var index = Random.Shared.Next(ImdbDataList.Count);
+        Message = $"https://www.imdb.com/title/{ImdbDataList[index].tconst}/";
+
+        return Task.FromResult(true);
     }
 
-    public async Task<bool> Init()
+    public override async Task<bool> Init()
     {
         try
         {
@@ -180,14 +157,16 @@ internal class RandomImdbCommand : IBotCommand
                 try
                 {
                     using HttpClient client = new();
-                    var response = await client.SendAsync(
-                        new HttpRequestMessage(HttpMethod.Head, url)
-                    );
-
-                    if (!response.IsSuccessStatusCode)
+                    using (var headResponse = await client.SendAsync(
+                        new HttpRequestMessage(HttpMethod.Head, url),
+                        CancellationToken
+                    ))
                     {
-                        _logger.Error(response.StatusCode.ToString());
-                        return false;
+                        if (!headResponse.IsSuccessStatusCode)
+                        {
+                            _logger.Error(headResponse.StatusCode.ToString());
+                            return false;
+                        }
                     }
 
                     _logger.Information("Downloading csv...");
@@ -195,18 +174,24 @@ internal class RandomImdbCommand : IBotCommand
                     if (!Directory.Exists(csvLocation))
                         Directory.CreateDirectory(csvLocation);
 
-                    using (response = await client.GetAsync(url, CancellationToken))
-                    {
-                        response.EnsureSuccessStatusCode();
-                        await using var downloadFileStream = new FileStream(
-                            csvFullPath,
-                            FileMode.Create
-                        );
-                        await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
-                    }
+                    using var response = await client.GetAsync(url, CancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    await using var downloadFileStream = new FileStream(
+                        csvFullPath,
+                        FileMode.Create
+                    );
+                    await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (File.Exists(csvFullPath))
+                        File.Delete(csvFullPath);
+                    throw;
                 }
                 catch
                 {
+                    if (File.Exists(csvFullPath))
+                        File.Delete(csvFullPath);
                     _logger.Error("Unable to reach CSV URL!");
                     return false;
                 }
@@ -230,6 +215,7 @@ internal class RandomImdbCommand : IBotCommand
             while ((bytesRead = await gzipStream.ReadAsync(buffer, CancellationToken)) > 0)
             {
                 CancellationToken.ThrowIfCancellationRequested();
+                InitProgress?.Report("decompressing");
                 decompressedStream.Write(buffer, 0, bytesRead);
             }
 
@@ -250,6 +236,7 @@ internal class RandomImdbCommand : IBotCommand
 
             await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
             {
+                InitProgress?.Report("parsing");
                 if (
                     !record.isAdult
                     && (record.titleType == "movie" || record.titleType == "tvSeries")
@@ -262,6 +249,7 @@ internal class RandomImdbCommand : IBotCommand
 
             ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
             _logger.Information("IMDB data loaded!");
+            _isInitialized = true;
             return true;
         }
         catch (OperationCanceledException)

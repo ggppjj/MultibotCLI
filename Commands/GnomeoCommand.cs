@@ -1,10 +1,10 @@
 using System.Drawing;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using LibMultibot;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
-using LibMultibot.Users;
 using Serilog;
 
 namespace MultibotCLI.Commands;
@@ -73,77 +73,45 @@ internal class GnomeoCommandConfig(string botName, string commandName, ILogger l
     }
 }
 
-internal class GnomeoCommand : IBotCommand
+internal class GnomeoCommand : CommandBase
 {
-    public IBot OriginatingBot { get; }
-    public string Name { get; } = "Gnomeo";
-    public string Description { get; } = "Gnomeo.";
-    public List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
-    public bool IsActive { get; set; } = true;
-    public BotCommandTypes CommandType { get; } =
+    public override string Name { get; } = "Gnomeo";
+    public override string Description { get; } = "Gnomeo.";
+    public override List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
+    public override BotCommandTypes CommandType { get; } =
         BotCommandTypes.SlashCommand | BotCommandTypes.TextCommand;
-    public CancellationToken CancellationToken { get; set; }
-    public bool IsAdminCommand { get; } = false;
-    public List<User>? AdminUsers { get; set; }
-    public List<ulong>? RestrictedToChannelIDs { get; set; }
-    public string? MessageContext { get; set; }
+    public override Color? EmbedColor { get; } = Color.FromArgb(255, 22, 44, 115);
+
     private readonly string _imagesDirectory = Path.Combine(
         AppContext.BaseDirectory,
         "Resources",
         "Images",
         "Gnomeo"
     );
-
     private readonly GnomeoCommandConfig _config;
-    private readonly ILogger _logger;
-    public IBotResponse Response { get; }
 
     internal GnomeoCommand(IBot originatingBot, CancellationToken cancellationToken = default)
+        : base(originatingBot, cancellationToken)
     {
-        OriginatingBot = originatingBot;
-        CancellationToken = cancellationToken;
-        _logger = LogController.BotLogging.ForBotComponent<GnomeoCommand>(originatingBot);
         _config = new GnomeoCommandConfig(originatingBot.Name, Name, _logger);
-        Response = new DiscordResponse(this, CancellationToken);
     }
 
-    internal class DiscordResponse(
-        IBotCommand command,
-        CancellationToken cancellationToken = default
-    ) : IBotResponse
+    public override Task<bool> PrepareResponse()
     {
-        public BotPlatforms ResponsePlatform { get; } = BotPlatforms.Discord;
-        public string? Message { get; } = null;
-        public string? EmbedFilePath { get; set; } = null;
-        public string? EmbedFileName { get; set; } = null;
-        public string? EmbedTitle { get; set; } = null;
-        public string? EmbedDescription { get; set; } = "Gnome.";
-        public Color? EmbedColor { get; } = Color.FromArgb(255, 22, 44, 115);
-        public IBotCommand OriginatingCommand { get; } = command;
-        public CancellationToken CancellationToken { get; set; } = cancellationToken;
+        if (!IsActive)
+            return Task.FromResult(false);
 
-        public Task<bool> PrepareResponse()
-        {
-            if (!OriginatingCommand.IsActive)
-                return Task.FromResult(false);
+        var gnomeo = _config.Config.Gnomeo;
 
-            var gnomeo = (OriginatingCommand as GnomeoCommand)!._config.Config.Gnomeo;
+        if (gnomeo.Count == 0)
+            return Task.FromResult(false);
 
-            if (gnomeo.Count == 0)
-                return Task.FromResult(false);
+        var randomGnomeo = gnomeo[Random.Shared.Next(gnomeo.Count)];
+        EmbedTitle = randomGnomeo.Title;
+        EmbedDescription = randomGnomeo.Quote;
+        EmbedFileName = randomGnomeo.ImageFileName;
+        EmbedFilePath = Path.Combine(_imagesDirectory, randomGnomeo.ImageFileName);
 
-            var randomGnomeo = gnomeo[Random.Shared.Next(gnomeo.Count)];
-            EmbedTitle = randomGnomeo.Title;
-            EmbedDescription = randomGnomeo.Quote;
-            EmbedFileName = randomGnomeo.ImageFileName;
-            EmbedFilePath = Path.Combine(
-                (OriginatingCommand as GnomeoCommand)!._imagesDirectory,
-                randomGnomeo.ImageFileName
-            );
-
-            return Task.FromResult(true);
-        }
+        return Task.FromResult(true);
     }
-
-    public Task<bool> Init() => Task.FromResult(true);
 }

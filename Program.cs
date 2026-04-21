@@ -42,23 +42,28 @@ Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
     logger.Information("Received shutdown signal...");
-    _ = Task.Run(async () => await Shutdown());
+    _ = Task.Run(Shutdown);
 };
 AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 {
     logger.Information("Application process exiting...");
-    _ = Task.Run(async () => await Shutdown());
+    _ = Task.Run(Shutdown);
 };
 
 try
 {
     bots.Add(new TCHJRBot(shutdownCts));
-    foreach (var bot in bots)
-        await bot.Init();
-    logger.Information("Started.");
-    Task.Delay(Timeout.Infinite, shutdownCts.Token).Wait();
+    var initResults = await Task.WhenAll(bots.Select(b => b.Init()));
+    if (initResults.All(r => !r))
+    {
+        logger.Fatal("All bots failed to initialize.");
+        shutdownCts.Cancel();
+    }
+    else
+        logger.Information("Started.");
+    await Task.Delay(Timeout.Infinite, shutdownCts.Token);
 }
-catch (AggregateException ex) when (ex.InnerException is OperationCanceledException) { }
+catch (OperationCanceledException) { }
 catch (Exception)
 {
     logger.Fatal("Fatal error occurred during application execution.");
