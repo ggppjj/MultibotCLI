@@ -21,14 +21,16 @@ public class AdminCommand : CommandBase
     {
         if (string.IsNullOrWhiteSpace(MessageContext))
         {
-            Message = "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
+            Message =
+                "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
             return Task.FromResult(true);
         }
 
         var afterCommand = MessageContext.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         if (afterCommand.Length < 2)
         {
-            Message = "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
+            Message =
+                "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
             return Task.FromResult(true);
         }
 
@@ -45,8 +47,9 @@ public class AdminCommand : CommandBase
         var subParts = subCommand.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var slug = subParts[0].ToLowerInvariant();
 
-        var scheduledMessage = ManagedScheduledMessages
-            .FirstOrDefault(m => m.Name.ToLowerInvariant().Replace(" ", "") == slug);
+        var scheduledMessage = ManagedScheduledMessages.FirstOrDefault(m =>
+            m.Name.ToLowerInvariant().Replace(" ", "") == slug
+        );
 
         if (scheduledMessage == null)
         {
@@ -104,7 +107,8 @@ public class AdminCommand : CommandBase
             int hours = freqMatch.Groups[1].Success ? int.Parse(freqMatch.Groups[1].Value) : 0;
             int minutes = int.Parse(freqMatch.Groups[2].Value);
             scheduledMessage.FrequencyMinutes = hours * 60 + minutes;
-            Message = $"'{scheduledMessage.Name}' frequency set to {scheduledMessage.FrequencyMinutes} minutes.";
+            Message =
+                $"'{scheduledMessage.Name}' frequency set to {scheduledMessage.FrequencyMinutes} minutes.";
             return Task.FromResult(true);
         }
 
@@ -116,7 +120,9 @@ public class AdminCommand : CommandBase
             {
                 scheduledMessage.ChannelIds.Add(channelId);
                 _logger.Information(
-                    "Added channel {ChannelId} to '{Name}'.", channelId, scheduledMessage.Name
+                    "Added channel {ChannelId} to '{Name}'.",
+                    channelId,
+                    scheduledMessage.Name
                 );
             }
             Message = $"Added <#{channelId}> to '{scheduledMessage.Name}'.";

@@ -1,4 +1,4 @@
-using LibMultibot;
+﻿using LibMultibot;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
 using LibMultibot.Users;
@@ -11,7 +11,8 @@ internal class TCHJRBot : BotBase
 {
     public override string Name { get; } = "TCHJR";
 
-    internal TCHJRBot(CancellationTokenSource shutdownSource) : base(shutdownSource)
+    internal TCHJRBot(CancellationTokenSource shutdownSource)
+        : base(shutdownSource)
     {
         List<User> admins =
         [
