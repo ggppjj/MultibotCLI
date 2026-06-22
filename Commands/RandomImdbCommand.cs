@@ -157,10 +157,12 @@ internal class RandomImdbCommand : CommandBase, IHeartbeatInit
                 try
                 {
                     using HttpClient client = new();
-                    using (var headResponse = await client.SendAsync(
-                        new HttpRequestMessage(HttpMethod.Head, url),
-                        CancellationToken
-                    ))
+                    using (
+                        var headResponse = await client.SendAsync(
+                            new HttpRequestMessage(HttpMethod.Head, url),
+                            CancellationToken
+                        )
+                    )
                     {
                         if (!headResponse.IsSuccessStatusCode)
                         {
