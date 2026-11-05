@@ -1,4 +1,4 @@
-﻿using LibMultibot;
+using LibMultibot;
 using LibMultibot.Interfaces;
 using LibMultibot.Platforms;
 using LibMultibot.Users;
@@ -11,8 +11,7 @@ internal class TCHJRBot : BotBase
 {
     public override string Name { get; } = "TCHJR";
 
-    internal TCHJRBot(CancellationTokenSource shutdownSource)
-        : base(shutdownSource)
+    internal TCHJRBot(CancellationTokenSource shutdownSource) : base(shutdownSource)
     {
         List<User> admins =
         [
@@ -21,9 +20,10 @@ internal class TCHJRBot : BotBase
             new(183872699532050432),
             new(429354910384128000),
         ];
-        Commands.Add(new CinephileCommand(this, CancellationToken));
+        Commands.Add(new CinephileCommand(this, CancellationToken) { AdminUsers = admins });
         Commands.Add(new GnomeoCommand(this, CancellationToken));
         Commands.Add(new RandomImdbCommand(this, CancellationToken));
+        Commands.Add(new BirdTrackerCommand(this, CancellationToken) { AdminUsers = admins });
         var adminCommand = new AdminCommand(this, CancellationToken) { AdminUsers = admins };
         Commands.Add(adminCommand);
         var oscarFever = new OscarFever(adminCommand, this);

@@ -3,7 +3,6 @@ using System.IO.Compression;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using CsvHelper;
-using CsvHelper.Configuration;
 using LibMultibot;
 using LibMultibot.Helper_Classes;
 using LibMultibot.Interfaces;
@@ -12,76 +11,9 @@ using Serilog;
 
 namespace MultibotCLI.Commands;
 
-public struct InternalImdbData()
-{
-    public required string tconst;
-    public required string titleType;
-    public required string primaryTitle;
-    public required string originalTitle;
-    public required bool isAdult;
-    public int? startYear;
-    public int? endYear;
-    public int? runtimeMinutes;
-    public required string[] genres;
-}
-
 public struct ImdbData()
 {
     public required string tconst;
-}
-
-public class ImdbDataMap : ClassMap<InternalImdbData>
-{
-    public ImdbDataMap()
-    {
-        Map(m => m.tconst).Convert(row => row.Row.GetField("tconst") ?? string.Empty);
-        Map(m => m.titleType).Convert(row => row.Row.GetField("titleType") ?? string.Empty);
-        Map(m => m.primaryTitle).Convert(row => row.Row.GetField("primaryTitle") ?? string.Empty);
-        Map(m => m.originalTitle).Convert(row => row.Row.GetField("originalTitle") ?? string.Empty);
-        Map(m => m.isAdult).Convert(row => row.Row.GetField("isAdult") == "1");
-
-        Map(m => m.startYear)
-            .Convert(row =>
-            {
-                var val = row.Row.GetField("startYear");
-                if (string.IsNullOrEmpty(val) || val == "\\N")
-                    return null;
-                if (int.TryParse(val, out var year))
-                    return year;
-                return null;
-            });
-
-        Map(m => m.endYear)
-            .Convert(row =>
-            {
-                var val = row.Row.GetField("endYear");
-                if (string.IsNullOrEmpty(val) || val == "\\N")
-                    return null;
-                if (int.TryParse(val, out var year))
-                    return year;
-                return null;
-            });
-
-        Map(m => m.runtimeMinutes)
-            .Convert(row =>
-            {
-                var val = row.Row.GetField("runtimeMinutes");
-                if (string.IsNullOrEmpty(val) || val == "\\N")
-                    return null;
-                if (int.TryParse(val, out var mins))
-                    return mins;
-                return null;
-            });
-
-        Map(m => m.genres)
-            .Convert(row =>
-            {
-                var val = row.Row.GetField("genres");
-                if (string.IsNullOrEmpty(val) || val == "\\N")
-                    return [];
-                return val.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            });
-    }
 }
 
 public class ImdbConfig
@@ -110,7 +42,7 @@ internal class RandomImdbCommand : CommandBase, IHeartbeatInit
     public override string Description { get; } = "Get a random movie or TV series from IMDB";
     public override List<BotPlatforms> CommandPlatforms { get; } = [BotPlatforms.Discord];
     public override BotCommandTypes CommandType { get; } = BotCommandTypes.SlashCommand;
-    private bool _isInitialized = false;
+    private volatile bool _isInitialized = false;
     public override bool IsInitialized => _isInitialized;
     public IProgress<string>? InitProgress { get; set; }
 
@@ -154,15 +86,18 @@ internal class RandomImdbCommand : CommandBase, IHeartbeatInit
 
             if (!File.Exists(csvFullPath))
             {
+                // Downloaded under a temp name, so an interrupted download can't be taken for
+                // the finished file on the next start.
+                var downloadPath = csvFullPath + ".tmp";
                 try
                 {
-                    using HttpClient client = new();
-                    using (
-                        var headResponse = await client.SendAsync(
-                            new HttpRequestMessage(HttpMethod.Head, url),
-                            CancellationToken
-                        )
-                    )
+                    // No overall timeout: this is a large file, and the init watchdog already
+                    // cancels the download if it stalls.
+                    using HttpClient client = new() { Timeout = Timeout.InfiniteTimeSpan };
+                    using (var headResponse = await client.SendAsync(
+                        new HttpRequestMessage(HttpMethod.Head, url),
+                        CancellationToken
+                    ))
                     {
                         if (!headResponse.IsSuccessStatusCode)
                         {
@@ -176,25 +111,40 @@ internal class RandomImdbCommand : CommandBase, IHeartbeatInit
                     if (!Directory.Exists(csvLocation))
                         Directory.CreateDirectory(csvLocation);
 
-                    using var response = await client.GetAsync(url, CancellationToken);
-                    response.EnsureSuccessStatusCode();
-                    await using var downloadFileStream = new FileStream(
-                        csvFullPath,
-                        FileMode.Create
+                    using var response = await client.GetAsync(
+                        url,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        CancellationToken
                     );
-                    await response.Content.CopyToAsync(downloadFileStream, CancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    await using (var downloadFileStream = new FileStream(downloadPath, FileMode.Create))
+                    await using (var body = await response.Content.ReadAsStreamAsync(CancellationToken))
+                    {
+                        var downloadBuffer = new byte[81920];
+                        int downloaded;
+                        while ((downloaded = await body.ReadAsync(downloadBuffer, CancellationToken)) > 0)
+                        {
+                            // Keeps the init watchdog from cancelling a download in progress.
+                            InitProgress?.Report("downloading");
+                            await downloadFileStream.WriteAsync(
+                                downloadBuffer.AsMemory(0, downloaded),
+                                CancellationToken
+                            );
+                        }
+                    }
+                    File.Move(downloadPath, csvFullPath, overwrite: true);
                 }
                 catch (OperationCanceledException)
                 {
-                    if (File.Exists(csvFullPath))
-                        File.Delete(csvFullPath);
+                    if (File.Exists(downloadPath))
+                        File.Delete(downloadPath);
                     throw;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    if (File.Exists(csvFullPath))
-                        File.Delete(csvFullPath);
-                    _logger.Error("Unable to reach CSV URL!");
+                    if (File.Exists(downloadPath))
+                        File.Delete(downloadPath);
+                    _logger.Error(ex, "Unable to download the CSV!");
                     return false;
                 }
             }
@@ -222,41 +172,49 @@ internal class RandomImdbCommand : CommandBase, IHeartbeatInit
             }
 
             decompressedStream.Position = 0;
-            using var reader = new StreamReader(decompressedStream);
 
-            var imdbCsvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
+            // IMDB's TSV has no quoting: quote characters in titles are literal text.
+            var imdbCsvOptions = new CsvReaderOptions
             {
-                HasHeaderRecord = true,
-                Delimiter = "\t",
-                BadDataFound = null,
-                MissingFieldFound = null,
+                HasHeader = true,
+                Separator = '\t',
+                Mode = CsvMode.NoEscape,
             };
 
-            using var csv = new CsvReader(reader, imdbCsvConfig);
-            csv.Context.RegisterClassMap<ImdbDataMap>();
-            var tempImdbDataList = new List<InternalImdbData>();
+            await using var csv = CsvReader.Create(decompressedStream, imdbCsvOptions);
+            await csv.ReadHeaderAsync(CancellationToken);
+            var tconstColumn = csv.GetFieldIndex("tconst");
+            var titleTypeColumn = csv.GetFieldIndex("titleType");
+            var isAdultColumn = csv.GetFieldIndex("isAdult");
+            var startYearColumn = csv.GetFieldIndex("startYear");
+            var tempImdbDataList = new List<ImdbData>();
 
-            await foreach (var record in csv.GetRecordsAsync<InternalImdbData>(CancellationToken))
+            while (await csv.ReadAsync(CancellationToken))
             {
                 InitProgress?.Report("parsing");
                 if (
-                    !record.isAdult
-                    && (record.titleType == "movie" || record.titleType == "tvSeries")
-                    && record.startYear >= 1910
+                    !csv.GetSpan(isAdultColumn).SequenceEqual("1"u8)
+                    && (
+                        csv.GetSpan(titleTypeColumn).SequenceEqual("movie"u8)
+                        || csv.GetSpan(titleTypeColumn).SequenceEqual("tvSeries"u8)
+                    )
+                    // A missing year is "\N", which does not parse and so is excluded.
+                    && int.TryParse(csv.GetSpan(startYearColumn), CultureInfo.InvariantCulture, out var startYear)
+                    && startYear >= 1910
                 )
                 {
-                    tempImdbDataList.Add(record);
+                    tempImdbDataList.Add(new ImdbData { tconst = csv.GetString(tconstColumn) });
                 }
             }
 
-            ImdbDataList = [.. tempImdbDataList.Select(x => new ImdbData { tconst = x.tconst })];
+            ImdbDataList = tempImdbDataList;
             _logger.Information("IMDB data loaded!");
             _isInitialized = true;
             return true;
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("IMDB load cancelled due to shutdown.");
+            _logger.Warning("IMDB load cancelled by shutdown or the init watchdog.");
             return false;
         }
         catch (Exception ex)

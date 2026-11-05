@@ -14,6 +14,15 @@ public class AdminCommand : CommandBase
     public override bool IsAdminCommand { get; } = true;
     public List<IBotScheduledMessage> ManagedScheduledMessages { get; } = [];
 
+    private const string Usage =
+        "Usage: !admin shutdown | !admin <name> [\"message\" | <interval> | <#channel> | remove <#channel> | on | off | now]";
+
+    // System.Timers.Timer rejects intervals over int.MaxValue milliseconds (about 24.8 days).
+    private const int MaxFrequencyMinutes = 35791;
+
+    // Gives the reply to the shutdown command time to send.
+    private static readonly TimeSpan ShutdownDelay = TimeSpan.FromSeconds(2);
+
     internal AdminCommand(IBot originatingBot, CancellationToken cancellationToken = default)
         : base(originatingBot, cancellationToken) { }
 
@@ -21,16 +30,14 @@ public class AdminCommand : CommandBase
     {
         if (string.IsNullOrWhiteSpace(MessageContext))
         {
-            Message =
-                "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
+            Message = Usage;
             return Task.FromResult(true);
         }
 
         var afterCommand = MessageContext.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         if (afterCommand.Length < 2)
         {
-            Message =
-                "Usage: !admin shutdown | !admin <name> [\"message\" | <Xm> | <#channel> | on | off | now]";
+            Message = Usage;
             return Task.FromResult(true);
         }
 
@@ -40,16 +47,19 @@ public class AdminCommand : CommandBase
         {
             _logger.Warning("Shutdown requested via admin command.");
             Message = "Shutting down...";
-            _ = OriginatingBot.RequestShutdown();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(ShutdownDelay);
+                await OriginatingBot.RequestShutdown();
+            });
             return Task.FromResult(true);
         }
 
         var subParts = subCommand.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var slug = subParts[0].ToLowerInvariant();
 
-        var scheduledMessage = ManagedScheduledMessages.FirstOrDefault(m =>
-            m.Name.ToLowerInvariant().Replace(" ", "") == slug
-        );
+        var scheduledMessage = ManagedScheduledMessages
+            .FirstOrDefault(m => m.Name.ToLowerInvariant().Replace(" ", "") == slug);
 
         if (scheduledMessage == null)
         {
@@ -92,7 +102,7 @@ public class AdminCommand : CommandBase
         }
 
         // Quoted string: new message text e.g. "I've got the Oscar Fever!"
-        var quotedMatch = Regex.Match(arg, @"^""(.+)""$");
+        var quotedMatch = Regex.Match(arg, @"^""(.+)""$", RegexOptions.Singleline);
         if (quotedMatch.Success)
         {
             scheduledMessage.Message = quotedMatch.Groups[1].Value;
@@ -100,32 +110,49 @@ public class AdminCommand : CommandBase
             return Task.FromResult(true);
         }
 
-        // Frequency: e.g. "40m" or "1h30m"
-        var freqMatch = Regex.Match(arg, @"^(?:(\d+)h)?(\d+)m$");
-        if (freqMatch.Success)
-        {
-            int hours = freqMatch.Groups[1].Success ? int.Parse(freqMatch.Groups[1].Value) : 0;
-            int minutes = int.Parse(freqMatch.Groups[2].Value);
-            scheduledMessage.FrequencyMinutes = hours * 60 + minutes;
-            Message =
-                $"'{scheduledMessage.Name}' frequency set to {scheduledMessage.FrequencyMinutes} minutes.";
-            return Task.FromResult(true);
-        }
-
         // Channel mention: <#123456789>
         var channelMatch = Regex.Match(arg, @"^<#(\d+)>$");
         if (channelMatch.Success && ulong.TryParse(channelMatch.Groups[1].Value, out var channelId))
         {
-            if (!scheduledMessage.ChannelIds.Contains(channelId))
+            if (scheduledMessage.AddChannel(channelId))
             {
-                scheduledMessage.ChannelIds.Add(channelId);
                 _logger.Information(
-                    "Added channel {ChannelId} to '{Name}'.",
-                    channelId,
-                    scheduledMessage.Name
+                    "Added channel {ChannelId} to '{Name}'.", channelId, scheduledMessage.Name
                 );
             }
             Message = $"Added <#{channelId}> to '{scheduledMessage.Name}'.";
+            return Task.FromResult(true);
+        }
+
+        // Channel removal: remove <#123456789>
+        var removeMatch = Regex.Match(arg, @"^remove\s+<#(\d+)>$", RegexOptions.IgnoreCase);
+        if (removeMatch.Success && ulong.TryParse(removeMatch.Groups[1].Value, out var removeChannelId))
+        {
+            if (scheduledMessage.RemoveChannel(removeChannelId))
+            {
+                _logger.Information(
+                    "Removed channel {ChannelId} from '{Name}'.", removeChannelId, scheduledMessage.Name
+                );
+                Message = $"Removed <#{removeChannelId}> from '{scheduledMessage.Name}'.";
+            }
+            else
+            {
+                Message = $"<#{removeChannelId}> is not on '{scheduledMessage.Name}'.";
+            }
+            return Task.FromResult(true);
+        }
+
+        // Frequency: e.g. "40m", "2h" or "1h30m"
+        if (DurationText.TryParse(arg, out var frequency))
+        {
+            var minutes = frequency.TotalMinutes;
+            if (minutes < 1 || minutes > MaxFrequencyMinutes || minutes % 1 != 0)
+            {
+                Message = $"Frequency must be a whole number of minutes from 1 to {MaxFrequencyMinutes}.";
+                return Task.FromResult(true);
+            }
+            scheduledMessage.FrequencyMinutes = (int)minutes;
+            Message = $"'{scheduledMessage.Name}' frequency set to {scheduledMessage.FrequencyMinutes} minutes.";
             return Task.FromResult(true);
         }
 

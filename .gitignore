@@ -402,3 +402,6 @@ mono_crash.*.json
 # End of https://www.toptal.com/developers/gitignore/api/godot
 /token.json
 *.DS_Store
+
+# Local AI guidance, never tracked
+CLAUDE.md

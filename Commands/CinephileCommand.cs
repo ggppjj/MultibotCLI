@@ -116,9 +116,25 @@ internal class CinephileCommand : CommandBase
                 subArg = parts[2];
         }
 
+        // Plain !cinephile stays public, so the command itself is not an admin command.
+        var isAdminSubCommand =
+            subCommand is "preloadme" or "preloadnext" or "preloadclear"
+            || subCommand?.StartsWith("admin") == true;
+        if (
+            isAdminSubCommand
+            && AdminUsers?.Any(u => u.Id == MessageAuthorId) != true
+        )
+        {
+            Message = "Only bot admins can use that.";
+            return Task.FromResult(true);
+        }
+
         if (subCommand != null && subCommand.StartsWith("admin"))
         {
+            // Accept both "!cinephile admin 123" and legacy "!cinephile admin123".
             var adminArg = subCommand["admin".Length..];
+            if (string.IsNullOrEmpty(adminArg))
+                adminArg = subArg?.ToLowerInvariant() ?? string.Empty;
 
             if (adminArg == "last")
             {
@@ -131,17 +147,13 @@ internal class CinephileCommand : CommandBase
                 return Task.FromResult(true);
             }
 
-            if (
-                int.TryParse(adminArg, out int entryNumber)
-                && entryNumber >= 1
-                && entryNumber <= movies.Count
-            )
+            if (TryResolveEntryNumber(adminArg, movies, out int adminIdx))
             {
-                SetMovieEmbed(entryNumber - 1, movies);
+                SetMovieEmbed(adminIdx, movies);
                 return Task.FromResult(true);
             }
 
-            Message = $"Invalid admin index. Use 1 to {movies.Count}.";
+            Message = $"Invalid admin index. Use 1 to {MaxEntryNumber(movies)}.";
             return Task.FromResult(true);
         }
         else if (subCommand == "preloadme")
@@ -151,28 +163,28 @@ internal class CinephileCommand : CommandBase
                 Message = "Cannot identify user for preloadme.";
                 return Task.FromResult(true);
             }
-            if (!int.TryParse(subArg, out int idx) || idx < 1 || idx > movies.Count)
+            if (!TryResolveEntryNumber(subArg, movies, out int idx))
             {
-                Message = $"Invalid index. Use 1 to {movies.Count}.";
+                Message = $"Invalid index. Use 1 to {MaxEntryNumber(movies)}.";
                 return Task.FromResult(true);
             }
             var queue = _preloadMeQueues.GetOrAdd(
                 MessageAuthorId.Value,
                 _ => new ConcurrentQueue<int>()
             );
-            queue.Enqueue(idx - 1);
-            Message = $"Queued entry #{idx} for your next !cinephile.";
+            queue.Enqueue(idx);
+            Message = $"Queued entry #{EntryNumberOf(idx, movies)} for your next !cinephile.";
             return Task.FromResult(true);
         }
         else if (subCommand == "preloadnext")
         {
-            if (!int.TryParse(subArg, out int idx) || idx < 1 || idx > movies.Count)
+            if (!TryResolveEntryNumber(subArg, movies, out int idx))
             {
-                Message = $"Invalid index. Use 1 to {movies.Count}.";
+                Message = $"Invalid index. Use 1 to {MaxEntryNumber(movies)}.";
                 return Task.FromResult(true);
             }
-            _preloadNextQueue.Enqueue(idx - 1);
-            Message = $"Queued entry #{idx} for the next !cinephile.";
+            _preloadNextQueue.Enqueue(idx);
+            Message = $"Queued entry #{EntryNumberOf(idx, movies)} for the next !cinephile.";
             return Task.FromResult(true);
         }
         else if (subCommand == "preloadclear")
@@ -212,12 +224,48 @@ internal class CinephileCommand : CommandBase
         }
     }
 
+    /// <summary>
+    /// Entry numbers are keyed off the number in the image file name (cinephile123.png => 123)
+    /// so they stay stable even when the config list has gaps. Falls back to 1-based list
+    /// position when the file name carries no number.
+    /// </summary>
+    private static int EntryNumberOf(int index, List<MovieData> movies)
+    {
+        var name = movies[index].ImageFileName ?? string.Empty;
+        var digits = new string(name.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var n) ? n : index + 1;
+    }
+
+    private static int MaxEntryNumber(List<MovieData> movies)
+    {
+        int max = 0;
+        for (int i = 0; i < movies.Count; i++)
+            max = Math.Max(max, EntryNumberOf(i, movies));
+        return max;
+    }
+
+    private static bool TryResolveEntryNumber(string? arg, List<MovieData> movies, out int index)
+    {
+        index = -1;
+        if (!int.TryParse(arg, out int number))
+            return false;
+        for (int i = 0; i < movies.Count; i++)
+        {
+            if (EntryNumberOf(i, movies) == number)
+            {
+                index = i;
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void SetMovieEmbed(int index, List<MovieData> movies, bool includeIndex = false)
     {
         _lastSentIndex = index;
         var movie = movies[index];
-        var oneBased = index + 1;
-        EmbedDescription = includeIndex ? $"{movie.Description} {oneBased}" : movie.Description;
+        var entryNumber = EntryNumberOf(index, movies);
+        EmbedDescription = includeIndex ? $"{movie.Description} {entryNumber}" : movie.Description;
         EmbedTitle = movie.Title;
         EmbedFileName = movie.ImageFileName;
         EmbedFilePath = Path.Combine(_imagesDirectory, "cinephile", movie.ImageFileName);

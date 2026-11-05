@@ -11,7 +11,6 @@ List<IBot> bots = [];
 
 CancellationTokenSource shutdownCts = new();
 CancellationToken cancellationToken = shutdownCts.Token;
-var shutdownCompleted = false;
 
 ConfigHelper.EnsureConfigDirectoriesExist();
 if (!File.Exists(ConfigHelper.ProgramConfigPath))
@@ -36,18 +35,22 @@ var localApplicationConfig = new ConfigurationBuilder()
 var logController = new LogController();
 var logger = LogController.SetupLogging(typeof(Program), localApplicationConfig);
 
+// Lazy so that Ctrl+C, process exit and the normal exit path all share one shutdown.
+var shutdown = new Lazy<Task>(RunShutdownAsync);
+
 logger.Information("Starting...");
 
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
     logger.Information("Received shutdown signal...");
-    _ = Task.Run(Shutdown);
+    _ = shutdown.Value;
 };
 AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 {
     logger.Information("Application process exiting...");
-    _ = Task.Run(Shutdown);
+    // The process ends when this handler returns, so a SIGTERM has to wait here.
+    shutdown.Value.GetAwaiter().GetResult();
 };
 
 try
@@ -57,6 +60,7 @@ try
     if (initResults.All(r => !r))
     {
         logger.Fatal("All bots failed to initialize.");
+        Environment.ExitCode = 1;
         shutdownCts.Cancel();
     }
     else
@@ -64,28 +68,36 @@ try
     await Task.Delay(Timeout.Infinite, shutdownCts.Token);
 }
 catch (OperationCanceledException) { }
-catch (Exception)
+catch (Exception ex)
 {
-    logger.Fatal("Fatal error occurred during application execution.");
+    logger.Fatal(ex, "Fatal error occurred during application execution.");
+    Environment.ExitCode = 1;
 }
 finally
 {
-    if (!shutdownCompleted)
-        await Shutdown();
+    await shutdown.Value;
 }
 
-async Task Shutdown()
+async Task RunShutdownAsync()
 {
-    if (!shutdownCompleted)
+    // Cancelling below can resume the main thread inline, which then reads shutdown.Value.
+    // Lazy throws if that happens while this factory is still running, so return first.
+    await Task.Yield();
+    try
     {
         logger.Information("Starting shutdown process...");
-        var tasks = new List<Task>();
-        foreach (var bot in bots)
-            tasks.Add(bot.Shutdown());
-        await Task.WhenAll(tasks);
-        shutdownCompleted = true;
-        shutdownCts.Cancel();
+        await Task.WhenAll(bots.Select(bot => bot.Shutdown()));
         logger.Information("Application shutdown completed.");
+    }
+    catch (Exception ex)
+    {
+        logger.Error(ex, "Error during shutdown.");
+        Environment.ExitCode = 1;
+    }
+    finally
+    {
+        // Always release the main thread, or a failed shutdown would hang the process.
+        shutdownCts.Cancel();
         Log.CloseAndFlush();
     }
 }
