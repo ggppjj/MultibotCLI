@@ -45,12 +45,12 @@ public class AdminCommand : CommandBase
 
         if (subCommand.Equals("shutdown", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.Warning("Shutdown requested via admin command.");
-            Message = "Shutting down...";
+            _logger.Warning("Shutdown of this bot requested via admin command.");
+            Message = $"Shutting down {OriginatingBot.Name}...";
             _ = Task.Run(async () =>
             {
                 await Task.Delay(ShutdownDelay);
-                await OriginatingBot.RequestShutdown();
+                await OriginatingBot.RequestBotShutdown();
             });
             return Task.FromResult(true);
         }

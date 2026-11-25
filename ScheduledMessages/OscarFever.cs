@@ -138,6 +138,10 @@ public class OscarFever : IBotScheduledMessage
 
     public void TriggerNow()
     {
+        // The timer outlives a bot that was shut down on its own.
+        if (!OriginatingBot.IsActive)
+            return;
+
         ulong[] channelIds;
         lock (_channelLock)
             channelIds = [.. _config.Config.ChannelIds];

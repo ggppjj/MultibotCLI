@@ -26,6 +26,7 @@ internal class TCHJRBot : BotBase
         Commands.Add(new BirdTrackerCommand(this, CancellationToken) { AdminUsers = admins });
         var adminCommand = new AdminCommand(this, CancellationToken) { AdminUsers = admins };
         Commands.Add(adminCommand);
+        Commands.Add(new SuperAdminCommand(this, CancellationToken));
         var oscarFever = new OscarFever(adminCommand, this);
         ScheduledMessages!.Add(oscarFever);
         adminCommand.ManagedScheduledMessages.Add(oscarFever);
